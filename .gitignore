@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Generated outputs (regenerable; keep the repo code-only per the two-PC rule)
+figures/*.png
+figures/*.pdf
+figures/*.svg
+!figures/.gitkeep
+
+# Real data never goes in git (Stage 3 lives on the lab PC)
+data/
+*.npz
+*.mat
+*.nwb
+*.h5
+
+# OS
+.DS_Store
+Thumbs.db

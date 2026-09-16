@@ -1,0 +1,24 @@
+[project]
+name = "gdar-tp"
+version = "0.1.0"
+description = "Graph Diffusion AutoRegression with Tensor-Product vertex structure for interpretable dynamics and LMI stimulation control."
+requires-python = ">=3.11"
+dependencies = [
+    "numpy",
+    "scipy",
+    "networkx",
+    "matplotlib",
+    "tensorly",
+    "cvxpy",
+]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.setuptools.packages.find]
+include = ["gdar_tp*"]
