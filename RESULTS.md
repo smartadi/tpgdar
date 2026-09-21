@@ -104,15 +104,34 @@ Single LMI state-feedback gain quadratically stabilizes the 2-vertex polytope
 actuator limits it cuts activity fluctuation **~23%**, degrading gracefully with
 delay. Fig: `05_closed_loop.png`.
 
-## Real data — OS-Pulse ECoG  (`09_ospulse_real.py`)
-Monkey Jalapeno, 96-ch uECoG (session 091114_M1), stim frequency (10–150 Hz) as
-the scheduling variable; 8-NN support from electrode positions; induced activity
-(trial-mean removed) to drop the phase-locked stim artifact.
+## Real data — OS-Pulse ECoG  (`09_ospulse_real.py`)  — honest null
+Monkey Jalapeno, 96-ch uECoG (session 091114_M1), stim frequency (10–150 Hz, 9
+conditions) as the scheduling variable; **78 good channels** (18 SNR-bad dropped);
+**8-NN support** from electrode positions (362 edges); fs 339 Hz (decim 3), K=2;
+**induced activity** (per-condition trial-mean removed) to drop the phase-locked
+stim artifact.
 
-*(Filled in when the run completes — see the script's printed output: HOSVD rank
-over frequency, recovered vertex graphs, leave-one-frequency-out TP-vs-pooled
-prediction, and coupling-vs-distance correlation.)*
-Figs: `09_ospulse_overview.png`, `09_ospulse_vertices.png`.
+What TP-GDAR finds on real data:
+- **Coupling respects anatomy:** |coupling| vs −distance corr = **+0.33** — nearby
+  channels couple more, as the array geometry predicts. The GDAR fit is capturing
+  real spatial structure.
+- **But the frequency dependence is NOT strongly low-rank.** HOSVD spectrum:
+  `[1, 0.110, 0.094, 0.075, 0.072, 0.064, ...]` — a gradual decay with **no clean
+  gap** (contrast the synthetic 2.9× gap at rank 5). The gap heuristic returns 3,
+  but that is weak.
+- **TP does not beat the state-blind model.** Leave-one-frequency-out held-out
+  1-step NRMSE: pooled **0.1615** vs TP-interp **0.1629** (TP loses by −0.0013).
+
+**Read this honestly:** the pipeline runs end-to-end on real 96-ch data and the
+spatial structure is sensible, but on *this* session, with induced activity and
+stim frequency as the knob, the effective connectivity does **not** reorganize in
+a strongly low-rank, predictive way — so TP earns nothing over a frequency-blind
+GDAR. This is exactly the diagnostic behaving as designed (it tells you when TP is
+unnecessary). Contrast with the synthetic 5-graph case where TP wins decisively.
+Next things to try before concluding: a different scheduling variable (stim
+amplitude, per-band power, a low-dim latent), the **phase-locked evoked** component
+instead of induced, or conditioning on stim-site — and the lab's reproducibility-
+based artifact handling. Figs: `09_ospulse_overview.png`, `09_ospulse_vertices.png`.
 
 ## Caveats to state plainly
 - Vertex systems are a **representation, not unique** in general; the robust

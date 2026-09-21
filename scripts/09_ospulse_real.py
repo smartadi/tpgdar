@@ -38,9 +38,10 @@ DATADIR = os.environ.get("OSPULSE_DIR",
     r"C:\Users\aditya\Documents\projects\collab_export_OSPulse")
 SESSION = "091114_M1"
 FS = 3051.76 / 3
-K = 3
-DECIM = 2
+K = 2
+DECIM = 3
 KNN = 8
+MAX_TRIALS = 20   # subsample trials to keep the fits fast/low-memory
 
 
 def knn_support(pos, k=KNN):
@@ -67,7 +68,7 @@ def gap_rank(s, kmax=12):
 def load_condition(X, c, good, t0=1.5, t1=5.5):
     """Induced (trial-mean-subtracted), z-scored, decimated series for condition c."""
     lo, hi = int(t0 * FS), int(t1 * FS)
-    seg = np.asarray(X[c][:, good, lo:hi], dtype=float)   # (trials, N, samples)
+    seg = np.asarray(X[c][:MAX_TRIALS, good, lo:hi], dtype=float)  # (trials, N, samples)
     seg = seg - seg.mean(axis=0, keepdims=True)           # remove phase-locked artifact
     seg = seg[:, :, ::DECIM]
     ntr, N, ns = seg.shape
@@ -105,6 +106,7 @@ def main():
         series[ci] = Xc
         m = fit_gdar(Xc, K=K, support=mask, param="edgewise", ridge=1e-2)
         A_list.append(np.stack(m.A, axis=-1))
+        print(f"  fit condition {ci} ({int(freqs[ci-1])} Hz), {Xc.shape[0]} samples", flush=True)
     coeffs = np.stack(A_list, axis=0)                      # (9, N, N, K)
 
     # --- how many modes does the frequency dependence have? ---
