@@ -4,4 +4,6 @@ networkx
 matplotlib
 tensorly
 cvxpy
+pandas
 pytest
+# deck generation (optional): python-pptx

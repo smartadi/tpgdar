@@ -156,7 +156,7 @@ def _barycentric(Y_vertices, y_points, ridge=1e-10):
 
 
 def convex_hull(coeff_tensor, n_param_modes, method="tight", energy=0.9999,
-                max_vertices=None):
+                max_vertices=None, n_vertices=None):
     """Build a polytopic representation of the coefficient trajectory.
 
     Parameters
@@ -200,6 +200,10 @@ def convex_hull(coeff_tensor, n_param_modes, method="tight", energy=0.9999,
         idx = _tight_hull_vertices(Y)
     elif method == "box":
         idx = _box_vertices(Y)
+    elif method == "spa":
+        if n_vertices is None:
+            raise ValueError("method='spa' needs n_vertices")
+        idx = _spa_vertices(Y, n_vertices)
     else:
         raise ValueError(f"unknown hull method {method!r}")
 
@@ -231,6 +235,33 @@ def _tight_hull_vertices(Y):
     except (QhullError, Exception):
         # degenerate (points nearly on a lower-dim flat): fall back per-axis
         return _box_vertices(Y)
+
+
+def _spa_vertices(Y, r):
+    """Indices of ``r`` simplex corners via farthest-from-affine-hull greedy.
+
+    Endmember/vertex finder (the robust N-FINDR-style variant): the first corner
+    is the point farthest from the centroid; each subsequent corner is the point
+    farthest from the affine subspace spanned by those already chosen.  Recovers
+    the true pure vertices when the data visits them, even from mixed samples.
+    """
+    G = Y.shape[0]
+    idx = [int(np.argmax(np.linalg.norm(Y - Y.mean(axis=0), axis=1)))]
+    while len(idx) < min(r, G):
+        anchor = Y[idx[0]]
+        rel = Y - anchor
+        if len(idx) > 1:
+            diffs = (Y[idx[1:]] - anchor).T          # (q, m)
+            Qb, _ = np.linalg.qr(diffs)               # orthonormal span (q, m')
+            resid = rel - rel @ Qb @ Qb.T
+        else:
+            resid = rel
+        dist = np.linalg.norm(resid, axis=1)
+        j = int(np.argmax(dist))
+        if j in idx:
+            break
+        idx.append(j)
+    return idx
 
 
 def _box_vertices(Y):

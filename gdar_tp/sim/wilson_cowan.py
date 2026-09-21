@@ -140,6 +140,7 @@ class WCNetwork:
             E, I = np.array(x0[0], dtype=float), np.array(x0[1], dtype=float)
 
         out_e = np.zeros((total, n))
+        out_i = np.zeros((total, n))
         de_dt = pr.dt / pr.tau_e
         di_dt = pr.dt / pr.tau_i
         for t in range(total):
@@ -153,8 +154,9 @@ class WCNetwork:
                 I_new += noise_std * rng.standard_normal(n)
             E, I = E_new, I_new
             out_e[t] = E
+            out_i[t] = I
 
         E_obs = out_e[burn_in:]
         if return_full:
-            return E_obs, out_e  # (inhibitory omitted for brevity; hook if needed)
+            return E_obs, out_i[burn_in:]   # observed E, ground-truth hidden I
         return E_obs

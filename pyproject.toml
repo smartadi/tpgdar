@@ -10,10 +10,12 @@ dependencies = [
     "matplotlib",
     "tensorly",
     "cvxpy",
+    "pandas",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest"]
+deck = ["python-pptx"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

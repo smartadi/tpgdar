@@ -60,6 +60,37 @@ def test_energy_spectrum_and_rank():
     assert metrics.rank_at_energy(s, thresh=0.99) <= 2
 
 
+def test_spa_recovers_simplex_corners():
+    # 4 known operators mixed by a partition-of-unity that visits each corner
+    rng = np.random.default_rng(7)
+    # P-1 divisible by n_v-1 so the pure corners fall ON grid points (the
+    # identifiability condition: the schedule must visit each pure regime)
+    n_v, N, P = 4, 5, 13
+    V = rng.standard_normal((n_v, N, N, 1))
+    knots = np.linspace(0, 1, n_v)
+    p = np.linspace(0, 1, P)
+    W = np.zeros((P, n_v))
+    for m, pv in enumerate(p):
+        if pv <= knots[0]:
+            W[m, 0] = 1
+        elif pv >= knots[-1]:
+            W[m, -1] = 1
+        else:
+            j = np.searchsorted(knots, pv) - 1
+            t = (pv - knots[j]) / (knots[j + 1] - knots[j])
+            W[m, j] = 1 - t; W[m, j + 1] = t
+    T = np.einsum("pj,jabk->pabk", W, V)
+    poly = convex_hull(T, n_param_modes=1, method="spa", n_vertices=n_v)
+    assert poly.n_vertices == n_v
+    assert poly.residual < 1e-6          # the 4 vertices reconstruct every A(p)
+    # each true operator matches some recovered vertex
+    recovered = poly.vertex_systems.reshape(n_v, -1)
+    truth = V.reshape(n_v, -1)
+    for t in truth:
+        best = max(abs(np.corrcoef(t, r)[0, 1]) for r in recovered)
+        assert best > 0.999
+
+
 def test_box_hull_valid_2d():
     # a genuinely 2-D parameter dependence
     rng = np.random.default_rng(3)

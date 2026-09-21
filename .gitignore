@@ -8,10 +8,16 @@ venv/
 .ipynb_checkpoints/
 
 # Generated outputs (regenerable; keep the repo code-only per the two-PC rule)
+figures/**/*.png
+figures/**/*.pdf
+figures/**/*.svg
 figures/*.png
 figures/*.pdf
 figures/*.svg
 !figures/.gitkeep
+
+# duplicate of docs/PLAN.md dropped at repo root
+/gdar_tp_plan.md
 
 # Real data never goes in git (Stage 3 lives on the lab PC)
 data/
