@@ -133,6 +133,80 @@ amplitude, per-band power, a low-dim latent), the **phase-locked evoked** compon
 instead of induced, or conditioning on stim-site — and the lab's reproducibility-
 based artifact handling. Figs: `09_ospulse_overview.png`, `09_ospulse_vertices.png`.
 
+## Real data — TP on the INPUT operator B(p) (10_ospulse_tp_input.py) — 2026-10-12
+
+Session 091114 M1, 78 good ch, 8-NN graph (362 edges), fs 1017.25 Hz (the export is
+already ÷3; script 09 wrongly decimated again). Data are bandpassed from 0.1 to 150 Hz
+and scaled ×1e6. Only the stim window (1–2 s) is used.
+
+Model: x_t = Σ_{k≤5} A_k x_{t−k} + Σ_{q≤5} b_q(p) u_{t−q}.
+- A is shared and graph-supported.
+- u is the fixed pulse train (`make_pulse_train(align='exact')`), 1000 µs pulses, conditions 1–9 (10–150 Hz).
+- Training uses trials 0–39 and testing uses trials 40–59.
+- The metric is the held-out one-step Gaussian log-likelihood per sample. Each model uses its own Σ, taken from its own training residuals. Results are reported as Δℓ vs B = 0.
+
+**HOSVD of the B tensor (9 freq × 78 ch × 5 lags) over frequency:**
+- s/s₀ = [1, 0.281, 0.130, 0.100, 0.068, 0.056, 0.036, 0.031, 0.030].
+- Rank 1 holds 89.6 % of the energy. There is a moderate drop after r = 1 and no clean gap after that.
+- The 8-frequency LOFO spectra look the same.
+- w₁(f) falls monotonically from 10 to 150 Hz (‖B_f‖_F drops 2.4×). w₂ takes over at 100–150 Hz.
+
+**(i-a) Held-out trials, Δℓ (nats/sample) vs B = 0:**
+
+| model | mean ± SE |
+|---|---|
+| pooled B | 0.325 ± 0.024 |
+| per-condition B | 0.466 ± 0.035 |
+| TP r = 1 | 0.120 ± 0.031 |
+| TP r = 2 | 0.332 ± 0.027 |
+| TP r = 3 | 0.436 ± 0.034 |
+
+- TP r = 1 is wrecked by 150 Hz (−0.95).
+- TP needs r = 3 to approach the per-condition model.
+- The one-step NRMSE is 0.0034 for every model, so it cannot tell them apart; that metric is dominated by power below 2 Hz.
+
+**(i-b) Leave-one-frequency-out. TP does NOT beat pooled.**
+
+Mean Δℓ vs B = 0:
+
+| model | all 9 freqs | interior 20–100 Hz |
+|---|---|---|
+| pooled B | **0.366** | **0.499** |
+| TP r = 1 | −0.150 | 0.200 |
+| TP r = 2 | 0.169 | 0.381 |
+| TP r = 3 | 0.171 | 0.420 |
+| full-rank interpolation | 0.130 | 0.390 |
+| nearest-frequency B | 0.150 | 0.415 |
+| oracle (own B) | 0.827 | 0.726 |
+
+- Paired TP − pooled: r = 1 −0.516 ± 0.064, r = 2 −0.197 ± 0.026, r = 3 −0.196 ± 0.033.
+- TP wins only 2 of 9 held-out frequencies, at 10 and 20 Hz (for example 0.21 vs 0.09 at 10 Hz).
+- 150 Hz is extrapolation, and every interpolating model fails there: TP r = 2 scores −1.34, while the oracle scores +2.22.
+
+**(ii) p = pre-stim power, per trial.** The power is the log band power in the 0.50–0.95 s window, averaged over channels.
+
+Δℓ vs per-frequency B, beta / theta:
+
+| model | beta | theta |
+|---|---|---|
+| B(f, tertile) | −0.055 ± 0.011 | −0.097 ± 0.015 |
+| B_f + p̃·D, shared | +0.005 ± 0.005 | −0.015 ± 0.004 |
+| B_f + p̃·D_f | −0.007 | −0.059 |
+| TP rank-1 over the power mode | −0.035 | −0.034 |
+| A per tertile | −5.9 ± 1.3 | −0.03 ± 0.62 |
+| A + p̃A₁ | −0.02 ± 0.08 | −0.09 ± 0.12 |
+
+- The power-mode singular values are [1, 0.14, 0.09] for beta and [1, 0.13, 0.11] for theta.
+- Pre-stim state adds nothing to predicting the stim response. This is a null result.
+
+**Read:**
+- Moving TP from A to B is the right place: B carries real, frequency-ordered structure with a leading monotone gain mode.
+- But under LOFO a single pooled B beats interpolating B(p). The extra frequency-specific components (w₂, w₃) are not smooth in f, and they are dominated by 100–150 Hz.
+
+**Caveat:** the large Δℓ at 70–150 Hz (per-condition 0.48 / 1.53 / 0.69) contradicts sysID's ≈0 above 40 Hz. With 5 input lags and dense pulse trains, B can absorb residual stim artifact, so treat the high-frequency gains as suspect until the artifact is handled.
+
+Figures: `figures/10_ospulse_tp_input.png/.pdf`, `figures/10_ospulse_prestim_state.png/.pdf`. The cache is in `cache/` (git-ignored, 0.97 GB of Gram matrices).
+
 ## Caveats to state plainly
 - Vertex systems are a **representation, not unique** in general; the robust
   readouts are the graph, the **rank**, the weight trajectory, and (diffusion form)

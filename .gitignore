@@ -29,3 +29,6 @@ data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local derived caches (Gram matrices, results)
+cache/
