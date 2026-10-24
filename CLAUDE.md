@@ -1,6 +1,6 @@
 # CLAUDE.md — GDAR-TP (tpgdar)
 
-Project-specific notes. The global `~/.claude/CLAUDE.md` (Research Hub loop) still
+Project-specific notes. The global `~/.claude/CLAUDE.md` (`smartadi/research-hub` loop; lane label `gdar-tp`) still
 applies; this file adds detail and overrides it on conflict.
 
 ## What this is
