@@ -1,0 +1,21 @@
+# Line endings: text is stored LF in git, checked out natively. Added by research-hub sync.py attrs.
+* text=auto
+*.sh text eol=lf
+*.py text eol=lf
+*.md text eol=lf
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+# binaries: never diff or normalise
+*.png binary
+*.jpg binary
+*.pdf binary
+*.mat binary
+*.npy binary
+*.npz binary
+*.h5 binary
+*.fig binary
+*.mlx binary
+*.slx binary
+*.pptx binary
+*.docx binary
+*.xlsx binary
