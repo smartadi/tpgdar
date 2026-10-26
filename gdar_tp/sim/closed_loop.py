@@ -14,6 +14,7 @@ pathological mode.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -73,7 +74,7 @@ def run_closed_loop(network, F, B, n_steps, K, operating_mean,
         E, I = network.step(E, I, g, np.zeros(N), proc_noise, rng)
 
     hist = [E - operating_mean for _ in range(K)]   # centered history buffer
-    obs_buf = []                                     # for observation delay
+    obs_buf = deque(maxlen=delay + 1)                # for observation delay
     E_log = np.zeros((n_steps, N))
     U_log = np.zeros((n_steps, M))
     cen_log = np.zeros((n_steps, N))
@@ -86,7 +87,7 @@ def run_closed_loop(network, F, B, n_steps, K, operating_mean,
         # delayed, noisy observation feeds the controller
         obs = E + (obs_noise * rng.standard_normal(N) if obs_noise else 0.0)
         obs_buf.append(obs)
-        obs_used = obs_buf[max(0, len(obs_buf) - 1 - delay)]
+        obs_used = obs_buf[0]
         cen_obs = obs_used - operating_mean
         hist.append(cen_obs)
         hist.pop(0)

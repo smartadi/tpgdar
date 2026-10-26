@@ -37,7 +37,8 @@ def multi_step_nrmse(model, X, U=None, horizon=10):
         hist = X[t0 - K + 1:t0 + 1]
         u = None
         if U is not None and model.m > 0:
-            u = U[t0 + 1:t0 + 1 + horizon]
+            # rollout step s produces x(t0+1+s), driven by u(t0+s)
+            u = U[t0:t0 + horizon]
         roll = model.rollout(hist, horizon, U=u)
         preds.append(roll[-1])
         trues.append(X[t0 + horizon])

@@ -143,9 +143,12 @@ class WCNetwork:
         out_i = np.zeros((total, n))
         de_dt = pr.dt / pr.tau_e
         di_dt = pr.dt / pr.tau_i
+        # Convention (matches sim/linear.py and GDARModel): x(t+1) = f(x(t), u(t)),
+        # so the state written at loop index t is driven by drive[t-1].
         for t in range(total):
+            d_prev = drive[t - 1] if t >= 1 else 0.0
             net_in = (pr.c_ee * E - pr.c_ei * I
-                      + g_arr[t] * (self.W @ E) + pr.p_e + drive[t])
+                      + g_arr[t] * (self.W @ E) + pr.p_e + d_prev)
             inh_in = pr.c_ie * E - pr.c_ii * I + pr.p_i
             E_new = E + de_dt * (-E + sigmoid(net_in, pr.a_e, pr.theta_e))
             I_new = I + di_dt * (-I + sigmoid(inh_in, pr.a_i, pr.theta_i))

@@ -19,9 +19,16 @@ Both share the same design-matrix construction and prediction/flow API.
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass
 
 import numpy as np
+
+
+def _warn_dropped_input(model):
+    if model.m > 0 and not np.allclose(model.B, 0.0):
+        warnings.warn("model has a nonzero B but U is None: the input term is dropped",
+                      stacklevel=3)
 
 
 @dataclass
@@ -55,6 +62,8 @@ class GDARModel:
         T = X.shape[0]
         preds, trues = [], []
         has_u = self.m > 0 and U is not None
+        if U is None:
+            _warn_dropped_input(self)
         for t in range(self.K - 1, T - 1):
             nxt = np.zeros(self.n)
             for k in range(self.K):
@@ -81,6 +90,8 @@ class GDARModel:
         buf = [np.asarray(row, dtype=float) for row in x_hist]
         out = np.zeros((n_steps, self.n))
         has_u = self.m > 0 and U is not None
+        if U is None:
+            _warn_dropped_input(self)
         for s in range(n_steps):
             nxt = np.zeros(self.n)
             for k in range(self.K):

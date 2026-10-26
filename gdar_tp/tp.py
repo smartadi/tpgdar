@@ -17,13 +17,16 @@ Two related jobs:
    * ``method="tight"`` -- the exact convex hull of the trajectory (QuickHull);
      the fewest, tightest vertices (CNO-like: least conservative for control).
    * ``method="box"``   -- an axis-aligned bounding box in the affine PCA
-     coordinates (``2**q`` vertices); looser but always valid (SNNN-like).
+     coordinates (``2**q`` vertices), snapped to the nearest grid point.
+     Because of the snapping it is *not* guaranteed to contain the trajectory;
+     check ``Polytope.residual`` (a warning is raised when it does not).
 
 Reducing vertices vs. hull tightness is the feasibility knob explored in Stage 5.
 """
 
 from __future__ import annotations
 
+import warnings
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -218,6 +221,16 @@ def convex_hull(coeff_tensor, n_param_modes, method="tight", energy=0.9999,
     lam = _barycentric(Y[idx], Y)
     recon = lam @ M[idx]                    # (G, S)
     residual = float(np.max(np.linalg.norm(recon - M, axis=1)))
+    # containment is judged in the affine coordinates, so PCA truncation
+    # (energy < 1) does not count as a hull that misses the trajectory
+    outside = float(np.max(np.linalg.norm(lam @ Y[idx] - Y, axis=1)))
+    spread = float(np.max(np.linalg.norm(Y - Y.mean(axis=0), axis=1)))
+    if outside > 1e-6 * max(spread, 1e-12):
+        warnings.warn(
+            f"convex_hull(method={method!r}): the {len(idx)} vertices do not contain "
+            f"the whole trajectory (max distance outside {outside:.3g}, spread "
+            f"{spread:.3g}); an LMI certificate on this polytope does not cover "
+            "every A(p).", stacklevel=2)
     return Polytope(vertex_systems=vertex_systems, weights=lam,
                     vertex_grid_index=idx, method=method, affine_dim=q,
                     residual=residual, grid_shape=grid_shape)
@@ -232,7 +245,7 @@ def _tight_hull_vertices(Y):
     try:
         hull = ConvexHull(Y)
         return list(np.unique(hull.vertices))
-    except (QhullError, Exception):
+    except QhullError:
         # degenerate (points nearly on a lower-dim flat): fall back per-axis
         return _box_vertices(Y)
 

@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from gdar_tp.tp import hosvd, convex_hull
 from gdar_tp import metrics
@@ -103,6 +104,8 @@ def test_box_hull_valid_2d():
             w = np.array([(1 - a) * (1 - b), a, b])
             w = w / w.sum()
             T[i, j] = np.einsum("j,jabk->abk", w, V)
-    poly = convex_hull(T, n_param_modes=2, method="box")
+    # the snapped box is NOT guaranteed to contain the trajectory; it must say so
+    with pytest.warns(UserWarning, match="do not contain"):
+        poly = convex_hull(T, n_param_modes=2, method="box")
     assert np.allclose(poly.weights.sum(axis=1), 1.0, atol=1e-6)
     assert poly.weights.min() > -1e-6

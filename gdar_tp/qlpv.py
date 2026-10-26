@@ -68,7 +68,7 @@ def fit_grid(segments, p_values, K=1, support=None, laplacian=None,
         B_list.append(B)
     coeffs = np.stack(A_list, axis=0)       # (P, N, N, K)
     Bt = np.stack(B_list, axis=0)           # (P, N, M)
-    supp = support if support is not None else (np.abs(laplacian) > 0)
+    supp = _support_of(support, laplacian, coeffs.shape[-2])
     return QLPVModel(p_grid=[p_sorted], coeffs=coeffs, B=Bt, K=K,
                      param=param, support=np.asarray(supp, dtype=bool))
 
@@ -89,15 +89,28 @@ def fit_grid_2d(segment_grid, p1_values, p2_values, K=1, support=None,
     M = B0.shape[1]
     coeffs = np.zeros((P1, P2, N, N, K))
     Bt = np.zeros((P1, P2, N, M))
+    coeffs[0, 0] = A0
+    Bt[0, 0] = B0
     for i in range(P1):
         for j in range(P2):
+            if i == 0 and j == 0:
+                continue
             X, U = _pad(segment_grid[i][j])
             A, B = _fit_one(X, U, K, support, laplacian, param, ridge)
             coeffs[i, j] = A
             Bt[i, j] = B
-    supp = support if support is not None else (np.abs(laplacian) > 0)
+    supp = _support_of(support, laplacian, coeffs.shape[-2])
     return QLPVModel(p_grid=[p1, p2], coeffs=coeffs, B=Bt, K=K,
                      param=param, support=np.asarray(supp, dtype=bool))
+
+
+def _support_of(support, laplacian, N):
+    """The support mask stored on the model, mirroring ``fit_gdar``'s defaults."""
+    if support is not None:
+        return support
+    if laplacian is not None:
+        return (np.abs(laplacian) > 0) | np.eye(N, dtype=bool)
+    return np.ones((N, N), dtype=bool)
 
 
 def _pad(seg):
@@ -159,6 +172,6 @@ def fit_windowed(X, p_series, n_bins=8, win=None, hop=None, U=None, K=1,
 
     coeffs = np.stack(A_list, axis=0)
     Bt = np.stack(B_list, axis=0)
-    supp = support if support is not None else (np.abs(laplacian) > 0)
+    supp = _support_of(support, laplacian, coeffs.shape[-2])
     return QLPVModel(p_grid=[np.array(p_occ)], coeffs=coeffs, B=Bt, K=K,
                      param=param, support=np.asarray(supp, dtype=bool))

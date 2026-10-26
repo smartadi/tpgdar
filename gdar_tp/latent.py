@@ -22,7 +22,7 @@ Model::
     x(t+1) = A x(t) + w,   w ~ N(0, Q)      x in R^{2N}  (per node: [E, I])
     y(t)   = C x(t) + v,   v ~ N(0, R)      y in R^{N}   (observed E channels)
 
-Fit by EM (Kalman filter + RTS smoother E-step; projected M-step for the
+Fit by EM (Kalman filter + RTS smoother E-step; exact constrained M-step for the
 structure and sign constraints).
 """
 
@@ -80,6 +80,35 @@ def project_A(A, struct, sign):
     A = A * struct
     A = np.where(sign > 0, np.maximum(A, 0.0), A)
     A = np.where(sign < 0, np.minimum(A, 0.0), A)
+    return A
+
+
+def constrained_m_step(S00, S10, struct, sign, jitter=1e-8):
+    """Maximise the EM Q-function for ``A`` under the structure and sign masks.
+
+    Row ``a`` minimises ``A_a S00 A_a^T - 2 A_a S10_a^T`` over its allowed
+    entries, with Dale-signed entries bounded.  Writing ``S00 = R^T R`` turns this
+    into a bounded least squares, ``||R A_a^T - R^{-T} S10_a^T||^2``, solved
+    exactly.  (Projecting the unconstrained solution is *not* the optimum when
+    regressors are correlated, and breaks EM's monotone likelihood.)
+    """
+    from scipy.optimize import lsq_linear
+
+    d = S00.shape[0]
+    R = np.linalg.cholesky(S00 + jitter * np.eye(d)).T     # S00 = R^T R
+    A = np.zeros((d, d))
+    for a in range(d):
+        cols = np.where(struct[a])[0]
+        if cols.size == 0:
+            continue
+        rhs = np.linalg.solve(R.T, S10[a])
+        lo = np.where(sign[a, cols] > 0, 0.0, -np.inf)
+        hi = np.where(sign[a, cols] < 0, 0.0, np.inf)
+        if np.all(np.isinf(lo)) and np.all(np.isinf(hi)):
+            sol = np.linalg.lstsq(R[:, cols], rhs, rcond=None)[0]
+        else:
+            sol = lsq_linear(R[:, cols], rhs, bounds=(lo, hi)).x
+        A[a, cols] = sol
     return A
 
 
@@ -186,9 +215,8 @@ def fit_em(Y, struct, sign, C, n_iter=30, update_R=True, r_floor=1e-4,
         S11 = Exx[1:].sum(axis=0)                            # sum x_t x_t
         S10 = (Plag[1:] + np.einsum("ti,tj->tij", xs[1:], xs[:-1])).sum(axis=0)
 
-        # A: unconstrained LS then project
-        A_unc = S10 @ np.linalg.inv(S00 + 1e-8 * np.eye(d))
-        A = project_A(A_unc, struct, sign)
+        # A: exact constrained M-step (support + Dale signs), row by row
+        A = constrained_m_step(S00, S10, struct, sign)
 
         # Q (diagonal, floored)
         Qfull = (S11 - A @ S10.T - S10 @ A.T + A @ S00 @ A.T) / (T - 1)
