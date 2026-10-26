@@ -88,9 +88,13 @@ latent LDS (E-slot clamped to data, hidden I-slot free, Dale + graph constrained
 EM). Sweeping the inhibitory timescale `tau_i` (tau_e = 8 ms):
 | tau_i | latent 1-step pred | recover-I \|corr\| | E-as-proxy \|corr\| | gain |
 |---|---|---|---|---|
-| 8 | 0.298 | 0.371 | 0.499 | **−0.128** |
-| 25 | 0.091 | 0.613 | 0.709 | −0.096 |
-| 60 | 0.077 | 0.560 | 0.492 | **+0.068** |
+| 8 | 0.298 | 0.369 | 0.499 | **−0.131** |
+| 25 | 0.090 | 0.560 | 0.709 | −0.149 |
+| 60 | 0.077 | 0.532 | 0.492 | **+0.040** |
+
+*Re-run on 2026-10-26 with the exact constrained M-step (`latent.constrained_m_step`); the earlier
+project-after-least-squares M-step gave 0.371 / 0.613 / 0.560 and gains −0.128 / −0.096 / +0.068.
+The conclusions stand, with a smaller slow-I benefit.*
 
 Two honest findings: (1) **no free lunch for prediction** — the latent lag-1 model
 ties single-population GDAR everywhere (hidden pop adds no predictive power for E);
@@ -104,7 +108,15 @@ Single LMI state-feedback gain quadratically stabilizes the 2-vertex polytope
 actuator limits it cuts activity fluctuation **~23%**, degrading gracefully with
 delay. Fig: `05_closed_loop.png`.
 
-## Real data — OS-Pulse ECoG  (`09_ospulse_real.py`)  — honest null
+## Real data — OS-Pulse ECoG  (`09_ospulse_real.py`)  — SUPERSEDED (invalid window)
+
+> **2026-10-26: this section is not a valid test.** Script 09 fits on 1.5–5.5 s. The
+> response locked to the stimulation frequency shows that stimulation lasts only
+> 1.0–2.0 s (40 Hz: 12–17× baseline at 1.0–2.0 s, about 1× from 2.0 s on), so about
+> 87 % of the window is post-stimulation. The script also z-scores each condition
+> separately, which rescales A per condition, and concatenates trials. See
+> `docs/MODEL.md` §5. The real-data result is **§ Stacked TP-GDAR** below. The text is
+> kept for the record.
 Monkey Jalapeno, 96-ch uECoG (session 091114_M1), stim frequency (10–150 Hz, 9
 conditions) as the scheduling variable; **78 good channels** (18 SNR-bad dropped);
 **8-NN support** from electrode positions (362 edges); fs 339 Hz (decim 3), K=2;
@@ -134,6 +146,13 @@ instead of induced, or conditioning on stim-site — and the lab's reproducibili
 based artifact handling. Figs: `09_ospulse_overview.png`, `09_ospulse_vertices.png`.
 
 ## Real data — TP on the INPUT operator B(p) (10_ospulse_tp_input.py) — 2026-10-12
+
+> **2026-10-26: numbers superseded.** The ridge used here (1e-6 × each Gram diagonal
+> entry) is about four decades too strong for these lag Grams (condition number ~5e10).
+> In a ridge scan, held-out ℓ rises by +84 nats/sample as the ridge drops toward 1e-10.
+> All Δℓ below were computed on an over-shrunk A, and the TP models were two-stage. The
+> window, input and Gram construction here are correct, and script 11 reuses them. See
+> **§ Stacked TP-GDAR** for the valid comparison.
 
 Session 091114 M1, 78 good ch, 8-NN graph (362 edges), fs 1017.25 Hz (the export is
 already ÷3; script 09 wrongly decimated again). Data are bandpassed from 0.1 to 150 Hz
@@ -206,6 +225,78 @@ Mean Δℓ vs B = 0:
 **Caveat:** the large Δℓ at 70–150 Hz (per-condition 0.48 / 1.53 / 0.69) contradicts sysID's ≈0 above 40 Hz. With 5 input lags and dense pulse trains, B can absorb residual stim artifact, so treat the high-frequency gains as suspect until the artifact is handled.
 
 Figures: `figures/10_ospulse_tp_input.png/.pdf`, `figures/10_ospulse_prestim_state.png/.pdf`. The cache is in `cache/` (git-ignored, 0.97 GB of Gram matrices).
+
+## Stacked TP-GDAR: two-stage vs joint fit  (`11_tp_joint.py`) — 2026-10-26
+
+Model and learning: `docs/MODEL.md`. One stacked operator
+Θ(p) = [A_1..A_K | B_1..B_Q] per condition, with TP ranks (r_A, r_B) along p. Two
+learners are compared:
+- two-stage: per-condition fits, then an unweighted SVD over p;
+- joint: alternating least squares on the data loss, which is a Gram-weighted
+  low-rank fit with the ridge on the grid-point operators.
+
+Every score is held-out one-step Gaussian log-likelihood per sample, each model with
+its own Σ from its training residuals, reported as Δℓ against a pooled (p-blind) model.
+
+**A. Synthetic linear, true rank 2, uneven conditions.** 4×4 grid, K = 2, one input,
+7 conditions with data length ×0.3/×2.3 and input power ×0.2/×2, 5 seeds.
+- Relative operator error against the truth: per-condition 0.109, two-stage 0.068,
+  **joint 0.036**.
+- Leave-one-condition-out, interior p: two-stage +3.78, **joint +3.98**, oracle +4.06.
+  Joint closes about 70 % of the gap between two-stage and the oracle.
+
+**B. Wilson–Cowan 5×5, g0 = 3.0, A only, held-out p on fresh segments.**
+
+| | r = 1 | r = 2 | r = 3 |
+|---|---|---|---|
+| two-stage | **−7.85** | +0.745 | +0.744 |
+| joint | +0.16 | +0.751 | +0.747 |
+
+Nearest grid point scores +0.72 and the oracle +0.81. Rank 2 is recovered. With equal
+data per condition the two learners tie, as the theory predicts. At rank 1 the
+unweighted SVD fails badly: the synchronised network makes one regressor direction
+dominate G, and a small coefficient error along it is expensive.
+
+**C. Real OS-Pulse 091114 M1.** 78 channels, 8-NN graph, K = 5, Q = 5, 0.1–150 Hz,
+**stimulation window 1–2 s**, p = stimulation frequency (9 conditions, 10–150 Hz).
+- **Ridge** chosen by validation inside the training trials (fit 0–29, score 30–39):
+  1e-5 −2.7, 1e-6 44.6, 1e-8 108.1, **1e-10 114.4** (saturated).
+- Test trials 40–59 were used only for the final scores.
+
+| model | held-out trials | LOFO all 9 | LOFO interior 20–100 Hz |
+|---|---|---|---|
+| B = 0 (no light) | −0.53 | | |
+| pooled [A\|B] | 0 | 0 | 0 |
+| per-condition | −1.08 | (oracle −0.85) | (oracle −1.60) |
+| nearest frequency | | −6.74 | −2.47 |
+| two-stage A1B1 … A3B3 | −45 … −7.5 | −38 … −13 | −34 … −6.9 |
+| **joint A1B1** | +0.45 | +0.34 | +0.37 (6/7 wins) |
+| **joint A1B2** | +0.46 | +0.35 | **+0.37 (7/7 wins)** |
+| joint A1B3 | **+0.52** | +0.26 | +0.33 |
+| joint A2B1 | +0.38 | −4.73 | −0.68 |
+| joint A2B2 | +0.34 | −4.72 | −0.75 |
+| joint A3B3 | −0.11 | −5.91 | −1.26 |
+
+**Read:**
+- **The light is a real input:** +0.53 nats/sample over B = 0.
+- **TP does beat a frequency-blind model, in the right place.** The winning form is a
+  shared A with B(f) of rank 1–2 (a frequency-dependent gain on one input kernel), and
+  it generalises to *unseen* frequencies: all 7 interior frequencies improve at A1B2.
+  This reverses the script 10 conclusion, which came from the over-strong ridge plus
+  the two-stage learner.
+- **No support for A varying with frequency.** A2/A3 help some conditions in-sample
+  but lose under leave-one-frequency-out, which agrees with sysID's finding that A is
+  stimulation-invariant.
+- **Two-stage HOSVD fails on real data at every rank** (−7 to −45 nats). This is the
+  practical case for the joint learner: decomposing per-condition estimates without
+  their Gram weighting spends rank on poorly determined coefficients.
+- **Per-condition fits overfit** (395 parameters per row, about 40 trials per condition).
+  Joint TP sits between pooled and per-condition, which is where a regularised model
+  should be.
+- **Caveats:**
+  - 150 Hz is extrapolation and every interpolating model loses there;
+  - the A2 models' leave-one-frequency-out scores are dominated by 70 Hz and 150 Hz;
+  - this is one session and one site.
 
 ## Caveats to state plainly
 - Vertex systems are a **representation, not unique** in general; the robust
