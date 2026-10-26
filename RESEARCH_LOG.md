@@ -2,6 +2,16 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-10-26-c · Spec: latent directed graph (d nodes × n-dim LTI) as a low-d representation of the array graph
+commit: 09ca61b+this · branch: master · issues: — · pc: Pinnacle
+**Did/Found:**
+- Wrote `docs/LATENT_GRAPH.md`. The model has d latent patches, each an n-dim LTI node, coupled by a directed sparse W through the node outputs: A = blkdiag(F_i) + E W C_ξ. The observation is x = P C_ξ ξ, with P ≥ 0 a smooth footprint on the electrode graph. W is restricted to the coarsened support supp(Pᵀ A_N P); there is a directed-Laplacian variant.
+- The doc also covers gauges (observer-canonical nodes, ‖P_i‖ = 1), the init (graph coarsening → patch means → masked VARX), EM with structured M-steps, model selection, the TP/control tie-in and a literature map.
+- The node dynamics carry the pulse-response shape, so the input needs no time embedding.
+
+**State:** specification only, no code.
+**Resume:** implement Stage 0 (coarsen L_N → y₀ = P₀⁺x → masked VARX via `tpgdar.fit_static`) on 091114 M1 and compare its held-out log-likelihood with script 11; then EM (extend `latent.py`).
+
 ### L-2026-10-26-b · Stacked TP-GDAR: math written down, joint (Gram-weighted) learner, real OS-Pulse re-test
 commit: (this commit) · branch: master · issues: #66, #65 · pc: Pinnacle
 **Did:**
