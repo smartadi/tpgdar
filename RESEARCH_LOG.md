@@ -2,6 +2,18 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-02-a · TP-GDAR vs Felix's GDAR, no input, on a no-stim IOS Reach day
+commit: 5dcdc2e+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:**
+- Added `gdar_tp/sym_tp.py`: TP-GDAR in Felix's model class (symmetric, graph-supported, GLS), 3 tests, 47 pass. The pooled fit matches `CVARModel.fit_gdar` to 1e-11 on one trial. Added scripts 12 (comparison, plots) and 12b (robustness).
+- H 2021-11-12, 320 trials, 22 ch, K = 16, 5-fold over trials. p = task phase: rank 2 +0.138 ± 0.009 nats/sample over GDAR with evoked left in, +0.218 ± 0.013 with evoked removed; per-phase +0.180 / +0.297.
+- p = 12 time bins around go, leave-one-bin-out: rank 3 with interpolated weights +0.151 / +0.144; a separate fit on the neighbouring bin -0.019 / -0.080. On the fitted grid rank 3-4 equals or beats 12 separate fits at a quarter to a third of the parameters.
+- Holds to K = 32 and with per-phase noise covariance. Hold is a large share (hold dropped: +0.077 / +0.071). Absolute size is small: 0.006 nats per channel, SSE -1.9 %; K 5 to 32 gives GDAR +8.3 nats. Rank-2 model spectrum near 15 Hz: about +3.7 dB in hold, about -4 dB in move and post.
+- Edge-wise `fit_joint` loses to Felix's GLS on full-covariance likelihood (pooled -0.51) but wins on SSE and diagonal likelihood: mostly OLS vs GLS, not TP.
+
+**State:** done for one session. Full numbers in `RESULTS.md`. Figures `figures/12_tp_vs_gdar_{prediction,operators}.png`, caches `cache/12_*`, `cache/12b_*` (both git-ignored). Channel-to-position map assumes Noah's numbering follows `32ch_mmad`: not confirmed.
+**Resume:** replicate on H 2021-08-23 (406 trials, no stim), check the 15 Hz change against the data spectrum, confirm the channel map with Noah. `.venv\Scripts\python scripts/12_tp_vs_gdar_ios.py` takes about 1.8 h; add `--plot` to redraw from cache.
+
 ### L-2026-10-26-c · Spec: latent directed graph (d nodes × n-dim LTI) as a low-d representation of the array graph
 commit: 09ca61b+this · branch: master · issues: — · pc: Pinnacle
 **Did/Found:**

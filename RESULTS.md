@@ -306,3 +306,67 @@ dominate G, and a small coefficient error along it is expensive.
 - On real data the stim artifact is only partially handled here (induced-activity
   subtraction); a publication analysis needs the lab's reproducibility-based
   artifact treatment. Units/scaling of the ECoG to be confirmed with the owner.
+
+## TP-GDAR vs Felix's GDAR, no input, IOS Reach  (`12_tp_vs_gdar_ios.py`, `12b_tp_vs_gdar_robust.py`) — 2026-11-02
+
+Hydrogen 2021-11-12, a day with no stim: 320 reach trials, 22 channels, 333 Hz, 50 graph
+edges. Felix's positions (`32ch_mmad`, identical to `priming`'s Hydrogen grid) and his
+1.5-unit threshold. The baseline is his model and estimator (symmetric, graph-supported,
+GLS), reimplemented on trial-wise Grams in `gdar_tp/sym_tp.py`; on one trial it matches
+`CVARModel.fit_gdar` to a relative difference of 1e-11. TP-GDAR here stays in the same
+symmetric class. Held-out trials, 5-fold, K = 16 (48 ms) chosen by CV of the baseline only.
+Gain = held-out one-step log-likelihood over GDAR, nats/sample (over 22 channels).
+
+| p = task phase (hold/plan/move/post) | evoked left in (Felix) | evoked removed |
+|---|---|---|
+| rank 1 | +0.087 ± 0.013 | +0.113 ± 0.016 |
+| rank 2 | +0.138 ± 0.009 | +0.218 ± 0.013 |
+| rank 3 | +0.167 ± 0.009 | +0.259 ± 0.013 |
+| separate fit per phase (rank 4) | +0.180 ± 0.010 | +0.297 ± 0.012 |
+
+| p = 12 bins of 100 ms around go | evoked left in | evoked removed |
+|---|---|---|
+| rank 3 (3,483 params) | +0.137 | +0.168 |
+| rank 4 (4,640) | +0.127 | +0.178 |
+| 12 separate fits (13,824) | +0.098 | +0.173 |
+| leave-one-bin-out: rank 3, weights interpolated | +0.151 | +0.144 |
+| leave-one-bin-out: separate fit on the neighbouring bin | -0.019 | -0.080 |
+
+Trial-level Wilcoxon p < 1e-36 for every TP row of the fitted grids (not across sessions).
+
+**What TP adds:**
+- A single GDAR misses real task dependence. The gain is not the evoked response entering
+  through A: it grows when evoked kernels are removed.
+- Rank 2 takes about 75 % of the per-phase gain with half the parameters.
+- It predicts task times it never saw (interior bins). Separate fits cannot: the
+  neighbouring-bin fit is worse than GDAR. On 12 bins rank 3-4 equals or beats 12 separate fits at a quarter to a third
+  of the parameters. This is the clearest advantage over both GDAR and separate fits.
+- The operators give a readable effect: the rank-2 model spectrum near 15 Hz is about +3.7 dB
+  in hold and about -4 dB in move and post, relative to GDAR, the pattern expected of beta
+  desynchronisation (read from the model, not yet checked against the data spectrum).
+
+**How big, and how robust:**
+- Small in absolute terms: 0.138 nats/sample is 0.006 per channel, SSE down 1.9 %. Raising K
+  from 5 to 32 gives GDAR +8.3 nats/sample. Forecasts: VAF 18 ms ahead 0.18 to 0.21; 3 ms
+  ahead no real change (0.974 to 0.975).
+- Holds at K up to 32 (+0.13 evoked left in, +0.25 removed) and with one noise covariance
+  per phase, so it is not only a power difference.
+- Hold carries a large share: dropping it gives +0.077 / +0.071. Trimming it to -300..-20 ms
+  gives +0.122 / +0.173. Plan barely gains at rank 2.
+- Spectral radius barely moves with phase with evoked left in (0.964 to 0.965). With evoked
+  removed, hold is slower (0.95 vs 0.93).
+- Split-half reliability of Θ(p) minus GDAR at rank 2: 0.83 with evoked left in. The 0.99 with
+  evoked removed is inflated, since those kernels were fitted on all trials before splitting.
+
+**Edge-wise TP-GDAR (`tpgdar.fit_joint`, not symmetric, row-wise OLS).** Against its own pooled
+fit it gains +0.099 / +0.087 / +0.045 (ranks 1-3, evoked left in). Against Felix's GLS fit the
+whole family loses on full-covariance likelihood (pooled -0.51) while winning on SSE (+1.9 %)
+and diagonal-covariance likelihood (+0.21). OLS ignores noise correlations, which is what
+this score weights, so the comparison mostly separates OLS from GLS. Results above use the symmetric fit.
+
+**Limits:** one session, one monkey. K is at the edge of the grid (GDAR likelihood still rises
+at 32). The channel-to-position map assumes Noah's channel numbers follow the `32ch_mmad` order
+(not confirmed with Noah). Felix fits per trial or segment; here the baseline is pooled over the
+day, since a fixed day-wide operator is what TP is compared with.
+
+Figures: `figures/12_tp_vs_gdar_prediction.png`, `figures/12_tp_vs_gdar_operators.png`.
