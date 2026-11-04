@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-m · Method gate: fitting and scoring edits wait for Aditya's approval
+commit: 33219c2+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** Aditya asked for a hook after I picked the joint fit on my own. `.claude/hooks/method_gate.py` is a PreToolUse hook that refuses edits to `gdar_tp/` (except `io.py`, `viz.py`, `__init__.py`), edits to `scripts/*.py` that change a fitting or scoring term, shell commands that visibly write to those, and edits to the gate. It reads the session transcript and opens only when a complete explanation block is followed by a plain approval from Aditya; their next message closes it. `tests/test_method_gate.py`: 49 pass, 1 expected failure. The hook fired through the real harness on my next edit, which was to the gate itself, under auto mode.
+**State:** live on this PC and synced by git. The expected failure is a one-line fix to the gate, refused by the gate and put to Aditya. A Read call would be gated if it ever reached the script, but the settings matcher doesn't send Read. The gate can't see intent: a comment fix in `gdar_tp/` is stopped, and a method choice in a scratchpad script isn't.
+**Resume:** after approval, add the tool check to `why_gated` and remove the xfail in `tests/test_method_gate.py`. `.venv\Scripts\python -m pytest tests/test_method_gate.py`.
+
 ### L-2026-11-04-l · HOSVD vs the joint fit on IOS Reach: the metric does most of the work
 commit: 57d82a5+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** Read Baranyi 2004 (`docs/`): it transforms a known model, with no data or noise, so it has no system identification of its own. `scripts/12d_hosvd_vs_joint.py` compares the low-rank step on H 11-12 from the same per-bin GLS fits. Rank 2 gain, evoked left in / removed: HOSVD +0.016 / +0.003, SVD in the pooled data metric +0.180 / +0.211, joint +0.190 / +0.248. HOSVD also gives different weights across the trial. Sixteen separate fits reach +0.211 / +0.392. Table in RESULTS.md.

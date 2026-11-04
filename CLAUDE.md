@@ -3,6 +3,15 @@
 Project-specific notes. The global `~/.claude/CLAUDE.md` (`smartadi/research-hub` loop; lane label `gdar-tp`) still
 applies; this file adds detail and overrides it on conflict.
 
+## Method gate (enforced by a hook)
+
+Aditya approves every change to how a model is fitted or scored, after an explanation. `.claude/hooks/method_gate.py`
+refuses edits to `gdar_tp/` (except `io.py`, `viz.py`, `__init__.py`), edits to `scripts/*.py` that change a fitting or
+scoring term, and edits to the gate itself. When it refuses: write its block in chat (Method decision, Asked, Current
+method, Proposed, Alternatives, Why), then end the turn, with `Approve` as the first button if the app offers them. Don't
+look for a route around it. A plain approval opens the gate until Aditya's next message. It can't see intent, so a
+method choice it doesn't catch, such as one in a scratchpad script, still goes to Aditya first.
+
 ## What this is
 
 A parameter-varying **G**raph **D**iffusion **A**uto**R**egression model on array
