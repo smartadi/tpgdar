@@ -4,7 +4,9 @@ Run:  .venv\Scripts\python scripts/make_mpc_tp_deck.py
 Writes GDAR-TP_MPC_and_TP-GDAR.pptx.
 
 Part 1 numbers: the NC draft (Closedloop_nc/results.tex, 5a955c7), checked against
-brain_paper/controller-analysis/data/mpc_direct_*_noCL.mat and mpc_varx_supp_*.mat.
+brain_paper/controller-analysis/data/mpc_direct_*_noCL.mat and mpc_varx_supp_*.mat.  The command
+limit numbers are the JN correction of 2026-11-03 to the NC sentence (brain_paper RESEARCH.md,
+stats_v2/poor_trials.py).
 Figure: Closedloop_nc/images/Figure6.pdf.  Part 2 numbers: scripts 11 to 14.
 Part 3 numbers: script 15 (cache/15_run.log).
 """
@@ -109,7 +111,8 @@ def mpc_slides(d):
     d.text(s, ["Predicting activity lowers the error and the variability that feedback leaves",
                "Constant target: error down about 40% with a fitted model, about 80% with perfect prediction "
                "(ratios of medians; the median per-trial MPC/PI ratio is 0.68)",
-               "The laser limits cost little: most remaining error is prediction error",
+               "Most remaining error is prediction error, except on the worst quarter of trials (n = 27): with perfect prediction "
+               "their median RMSE stays at 1.97 (0.21 for the rest), and 89% of that squared error occurs with the command at a limit",
                "Descriptive simulation on recorded data, not a live test and no statistical tests",
                "One session per target type (Mouse 1e, Mouse 3b)"], 1.5, 5.2, size=20)
 
