@@ -32,3 +32,6 @@ Thumbs.db
 
 # Local derived caches (Gram matrices, results)
 cache/
+figures/*.gif
+figures/*.mp4
+figures/deck/*.json

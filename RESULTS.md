@@ -488,3 +488,23 @@ stimulation has few sites and a nonlinear plant. The closed-loop traces use a sl
 fast p is covered by the certificate only, not simulated.
 
 Figures: `figures/15_nine_node_learning.png`, `figures/15_nine_node_control.png`. Log: `cache/15_run.log`.
+
+## Consensus on the 9-node example  (`17_consensus_demo.py`) — 2026-11-04
+
+Same plants as script 15 (20 per case), with the input at every node. Integral action per node,
+`z(t+1) = z(t) + r(t) - x(t)`, `u = F_x xi + F_z z`; the augmented system is still a polytope, so the same LMI
+applies (alpha = 0.95). Target steps over 1000 samples; loop closed on the true plant. Exact consensus needs an
+input at every node: M inputs can hold only M nodes.
+
+| case | controller | stable at all p | worst rho | rms error | spread | rms input |
+|---|---|---|---|---|---|---|
+| one unstable end | none | 0/20 | 1.030 | 20.7 | | |
+| | pooled LQR | 20/20 | 0.916 | 0.325 | 0.304 | 1.977 |
+| | polytopic | 20/20 | 0.815 | 0.337 | 0.318 | 2.006 |
+| two unstable ends | none | 0/20 | 1.030 | 24.5 | | |
+| | pooled LQR | 20/20 | 0.926 | 0.333 | 0.311 | 1.935 |
+| | polytopic | 20/20 | 0.817 | 0.338 | 0.319 | 1.972 |
+
+LMI feasible and certificate held on the true plant in 20/20 for both cases. Error and spread are medians over
+held windows, set by the noise: both gains reach the target about equally. The polytopic gain has the better
+worst rho; it doesn't track better here. Movie: `figures/17_consensus.mp4` (git-ignored; `--movie`, then `--mp4`).

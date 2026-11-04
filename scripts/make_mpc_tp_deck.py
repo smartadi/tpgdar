@@ -1,65 +1,56 @@
-r"""Plain deck: the brain-paper MPC replay, then TP-GDAR with its comparison plots.
+r"""Talk deck, low on text and editable: the MPC replay, then graphs, GDAR and TP-GDAR, then a control demo.
 
 Run:  .venv\Scripts\python scripts/make_mpc_tp_deck.py
-Writes GDAR-TP_MPC_and_TP-GDAR.pptx.
+Writes GDAR-TP_MPC_and_TP-GDAR.pptx.  The fuller write-up of the model and training stays in
+GDAR-TP_model_training.pptx (scripts/make_tp_math_deck.py).
 
+Built for PowerPoint for the web: text, equations and figures are ordinary text and shapes
+(scripts/deck_native.py), and the movie is an embedded MP4.  Pictures remain only for the paper's MPC
+panels, from Figure 6.  The plotted numbers aren't linked to the shapes: change the script and rebuild.
+
+Figure data comes first, from scripts/make_deck_figures_real.py, make_deck_figures_nine.py,
+make_deck_figure_ios.py (figures/deck/*.json) and 17_consensus_demo.py --movie, then --mp4.
 Part 1 numbers: the NC draft (Closedloop_nc/results.tex, 5a955c7), checked against
 brain_paper/controller-analysis/data/mpc_direct_*_noCL.mat and mpc_varx_supp_*.mat.  The command
 limit numbers are the JN correction of 2026-11-03 to the NC sentence (brain_paper RESEARCH.md,
-stats_v2/poor_trials.py).
-Figure: Closedloop_nc/images/Figure6.pdf.  Part 2 numbers: scripts 11 to 14.
-Part 3 numbers: script 15 (cache/15_run.log).
+stats_v2/poor_trials.py).  Figure: Closedloop_nc/images/Figure6.pdf.
+Part 2 numbers: scripts 11 to 14, facts on the data from yazdanlab/iosreach/README.md.
+Part 3 numbers: scripts 15 and 17 (cache/15_run.log, 17_run.log).
 """
 
 import os
 import subprocess
 import sys
 
+from lxml import etree
 from PIL import Image
-from pptx.util import Inches
+from pptx.dml.color import RGBColor
+from pptx.enum.shapes import MSO_CONNECTOR
+from pptx.enum.text import PP_ALIGN
+from pptx.util import Inches, Pt
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from make_tp_math_deck import (EQ, LEFT, MUTED, ROOT, WIDTH, Deck, limitations_slide,  # noqa: E402
-                               model_slides, title_slide, training_slides, vertex_eval_slides)
+from deck_native import add_edge_key, add_equation, render_figure  # noqa: E402
+from make_tp_math_deck import EQ, LEFT, MUTED, ROOT, TINT, WIDTH, Deck, title_slide  # noqa: E402
 
 OUT = os.path.join(ROOT, "GDAR-TP_MPC_and_TP-GDAR.pptx")
-FIG = os.path.join(ROOT, "figures")
+DECK = os.path.join(ROOT, "figures", "deck")
+MP4 = os.path.join(ROOT, "figures", "17_consensus.mp4")
+POSTER = os.path.join(ROOT, "figures", "17_consensus_poster.png")
 FIG6 = os.path.join(os.path.dirname(ROOT), "Closedloop_nc", "images", "Figure6.pdf")
-TOP, BOTTOM = 1.35, 7.25
-
-# (title, figure, side notes or None); the replication slide is appended only if its file exists
-RESULT_SLIDES = [
-    ("TP beats one GDAR on held-out trials and unseen task times", "12_tp_vs_gdar_prediction.png", None),
-    ("The gain holds with more lags; hold is a large share", "12_tp_vs_gdar_operators.png", None),
-    ("Rank 2, evoked left in: a switch before the go cue", "13_vertices_felix_r2.png",
-     ["Held-out gain +0.190 nats/sample; 16 separate fits +0.211",
-      "One vertex through hold and early plan, the other from late plan through move and early post",
-      "Vertices differ by about 8 dB near 15 Hz in the model, not yet checked against data"]),
-    ("Rank 3, evoked left in: vertex 2 is an extrapolation", "13_vertices_felix_r3.png",
-     ["Held-out gain +0.222 nats/sample, above the 16 separate fits",
-      "The triangle encloses all bins, so corners need not be visited by the data",
-      "Vertex 2 is a full spread from any bin: don't read its strong coupling as a real state"]),
-    ("Rank 2, evoked removed: the switch returns only part way", "13_vertices_induced_r2.png",
-     ["Held-out gain +0.248 nats/sample; 16 separate fits +0.392",
-      "Same switch in late plan, about half way back after touch",
-      "Hold vertex is slower: spectral radius 0.947 vs 0.929"]),
-    ("Rank 3, evoked removed: plan 1/4 is an unexplained jump", "13_vertices_induced_r3.png",
-     ["Held-out gain +0.323 nats/sample; separate fits still win at +0.392",
-      "Weights jump right after target onset, and that bin becomes a vertex",
-      "This could be left-over evoked response; not investigated yet"]),
-]
-
+TOP, BOTTOM = 1.3, 7.25
+NOTE_SIZE = 18
+EQ_X = LEFT + 0.1
 
 
 def figure6_crops():
-    """Figure 6 at 300 dpi, split into the constant-target and sine rows, without panel m."""
+    """Figure 6 at 300 dpi, the constant-target and sine rows, without panels a, b and m."""
     png = os.path.join(EQ, "figure6")
     subprocess.run(["pdftoppm", "-png", "-r", "300", "-singlefile", FIG6, png], check=True)
     im = Image.open(png + ".png").convert("RGB")
     W, H = im.size
     out = {}
-    for name, box in (("diagram", (0.0, 0.0, 0.365, 0.19)), ("constant", (0.0, 0.205, 1.0, 0.725)),
-                      ("sine", (0.0, 0.745, 0.80, 1.0))):
+    for name, box in (("constant", (0.0, 0.205, 1.0, 0.725)), ("sine", (0.0, 0.745, 0.80, 1.0))):
         path = os.path.join(EQ, f"figure6_{name}.png")
         crop = im.crop((int(box[0] * W), int(box[1] * H), int(box[2] * W), int(box[3] * H)))
         if name == "constant":      # panels c-h only: blank what is left of panel b above e and f
@@ -77,151 +68,242 @@ def fit_picture(s, path, x, w, top=TOP, bottom=BOTTOM):
     else:
         pw, ph = w, w * ih / iw
     s.shapes.add_picture(path, Inches(x + (w - pw) / 2), Inches(top), width=Inches(pw), height=Inches(ph))
-    return pw
+    return pw, ph
+
+
+def native(s, name, x=LEFT, y=TOP, w=WIDTH, h=None, bottom=BOTTOM, **kw):
+    """Draw figures/deck/<name>.json as shapes."""
+    render_figure(s, os.path.join(DECK, name + ".json"), x, y, w, h if h is not None else bottom - y, **kw)
+
+
+def figure(d, title, name, note=None, **kw):
+    """A title and a figure.  At most one short line under it."""
+    s = d.slide(title)
+    native(s, name, bottom=6.55 if note else BOTTOM, **kw)
+    if note:
+        d.text(s, note, 6.6, 0.5, size=NOTE_SIZE, bullet=False)
+    return s
+
+
+def edge_key(s, label="edge weight"):
+    """The colour key for edge maps, in the title row at the right."""
+    add_edge_key(s, 13.333 - 0.25 - (1.52 + 0.09 * len(label)), 0.62, label=label)
+
+
+def arrow(s, x0, y0, x1, y1):
+    ln = s.shapes.add_connector(MSO_CONNECTOR.STRAIGHT, Inches(x0), Inches(y0), Inches(x1), Inches(y1))
+    ln.line.color.rgb, ln.line.width = RGBColor(0x44, 0x44, 0x44), Pt(1.75)
+    a = ln.line._get_or_add_ln()
+    etree.SubElement(a, "{http://schemas.openxmlformats.org/drawingml/2006/main}tailEnd", type="triangle", w="med", len="med")
 
 
 def mpc_slides(d):
     crops = figure6_crops()
 
     s = d.slide("The MPC: predict, plan the laser, apply the first step")
-    d.eq(s, r"$\min_{u}\ \sum_{h}\left(\hat{y}_{t+h}-r\right)^{2}+\lambda\sum_{h}\left(\Delta u_{t+h}\right)^{2}$", 1.45, fs=24)
-    d.text(s, ["Every frame: plan the laser over the next 1 s, apply the first command, replan",
-               "Model: a VARX on the past second of the controlled site, 100 cortical sites and the laser",
-               "Held-out 200 ms prediction R²: VARX 0.41, site + laser 0.37, last value 0.10",
-               "A replay, not a live experiment: a VARX of the whole session stands in for cortex, driven by each "
-               "trial's recorded residuals, and the MPC's own model never saw closed-loop trials"],
-           2.45, 3.9, w=6.0, size=18)
-    fit_picture(s, crops["diagram"], 6.9, 5.85, top=2.3, bottom=5.6)
+    add_equation(s, r"$\mathrm{min}_{u}\ \sum_{h}\left(\hat{y}_{t+h}-r\right)^{2}+\lambda\sum_{h}\left(\Delta u_{t+h}\right)^{2}$", EQ_X, 1.45, size=26)
+    bx, by = 6.6, 2.75
+    d.label(s, "MPC", bx, by, 3.3, 0.5, fill=TINT, size=18, bold=True)
+    d.label(s, "VARX model: predicts activity", bx, by + 0.5, 3.3, 0.7, size=15)
+    d.label(s, "predict, optimise, apply first step", bx, by + 1.2, 3.3, 0.7, size=15)
+    d.label(s, "cortex", bx + 4.4, by + 0.5, 1.6, 0.9, fill=TINT, size=18, bold=True)
+    arrow(s, bx + 1.65, by - 0.5, bx + 1.65, by)
+    d.text(s, "target r", by - 0.6, 0.4, x=bx + 1.75, w=1.6, size=15, bullet=False, color=MUTED)
+    arrow(s, bx + 3.3, by + 0.65, bx + 4.4, by + 0.65)
+    d.text(s, "laser", by + 0.2, 0.4, x=bx + 3.4, w=1.0, size=15, bullet=False, color=MUTED)
+    arrow(s, bx + 4.4, by + 1.2, bx + 3.3, by + 1.2)
+    d.text(s, "activity", by + 1.2, 0.4, x=bx + 3.35, w=1.1, size=15, bullet=False, color=MUTED)
+    d.text(s, ["Replans every frame",
+               "200 ms prediction R²: 0.41, last value 0.10",
+               "A replay on recorded data, not a live test"], 2.7, 2.6, w=5.6, size=22)
 
     s = d.slide("Constant target: MPC lowers the error PI leaves")
-    fit_picture(s, crops["constant"], LEFT, WIDTH, top=1.3, bottom=6.1)
-    d.text(s, ["Median RMSE, %ΔF/F: recorded PI 1.46, MPC 0.88, perfect prediction 0.27 (Mouse 1e, steady-state window 1-3 s)",
-               "Lower than PI on 107 of 108 trials; across-trial variance down 37%"], 6.15, 1.0, size=16)
+    fit_picture(s, crops["constant"], LEFT, WIDTH, top=1.3, bottom=6.4)
+    d.text(s, "RMSE: PI 1.46, MPC 0.88, perfect prediction 0.27. Lower on 107 of 108 trials.", 6.5, 0.5,
+           size=NOTE_SIZE, bullet=False)
 
     s = d.slide("Sinusoidal target: a smaller gain over feedback with preview")
-    fit_picture(s, crops["sine"], LEFT + 0.1, WIDTH - 0.2, top=1.35, bottom=4.75)
-    d.table(s, [["Median RMSE, %ΔF/F", ""], ["Recorded CL+p", "3.00"], ["MPC", "2.67"], ["Perfect prediction", "2.35"]],
-            4.95, [2.75, 0.95], row_h=0.42, size=14)
-    d.text(s, ["Lower than CL+p on 56 of 57 trials",
-               "Across-trial variance 0.71 times that of CL+p",
-               "Mouse 3b, 4 s window; open loop lags by 71°, CL+p and MPC stay near zero"],
-           4.9, 2.1, x=4.75, w=8.0, size=16)
+    fit_picture(s, crops["sine"], LEFT, WIDTH, top=1.5, bottom=6.2)
+    d.text(s, "RMSE: CL+p 3.00, MPC 2.67, perfect prediction 2.35. Lower on 56 of 57 trials.", 6.4, 0.5,
+           size=NOTE_SIZE, bullet=False)
 
-    s = d.slide("What the MPC replay says, and how far it goes")
-    d.text(s, ["Predicting activity lowers the error and the variability that feedback leaves",
-               "Constant target: error down about 40% with a fitted model, about 80% with perfect prediction "
-               "(ratios of medians; the median per-trial MPC/PI ratio is 0.68)",
-               "Most remaining error is prediction error, except on the worst quarter of trials (n = 27): with perfect prediction "
-               "their median RMSE stays at 1.97 (0.21 for the rest), and 89% of that squared error occurs with the command at a limit",
-               "Descriptive simulation on recorded data, not a live test and no statistical tests",
-               "One session per target type (Mouse 1e, Mouse 3b)"], 1.5, 5.2, size=20)
+    s = d.slide("What the MPC replay says")
+    d.text(s, ["Prediction lowers the error and variability that feedback leaves",
+               "Constant target: about 40% lower, about 80% with perfect prediction (ratios of medians)",
+               "Most remaining error is prediction error, except the worst quarter of trials: "
+               "there 89% of it occurs at a command limit",
+               "Simulation on recorded data, one session per target type"], 1.7, 4.8, size=24)
 
 
-def figure_slide(d, title, name, notes):
-    s = d.slide(title)
-    path = os.path.join(FIG, name)
-    if notes is None:
-        fit_picture(s, path, LEFT, WIDTH)
-        return
-    pw = fit_picture(s, path, LEFT, 8.5)
-    x = LEFT + pw + 0.2
-    d.text(s, notes, 1.6, 5.0, x=x, w=13.333 - x - 0.45, size=16)
+def ios_slide(d):
+    s = d.slide("The data: IOS Reach")
+    native(s, "ios_reach", y=1.25, bottom=5.45,
+           panel_flags={"Trial timeline": dict(no_xaxis=True, no_yaxis=True),
+                        "Single trial": dict(no_yaxis=True), "Trial average": dict(no_yaxis=True)})
+    d.text(s, ["Macaque H, 4-target centre-out reach. Recorded by Noah Stanis",
+               "Two 16-channel ECoG arrays, LFP at 1 kHz, 333 Hz after decimation",
+               "3 days: 320, 404 and 610 trials. On the stim day, 307 trials have a 900 ms light pulse at target on"],
+           5.5, 1.7, size=17)
+
+
+def graph_slides(d):
+    figure(d, "An electrode array is a graph", "graph_array", "One number per electrode. Edges join neighbours.")
+
+    s = d.slide("Activity spreads along edges")
+    y = add_equation(s, r"$x(t+1)=(I-h\,L)\,x(t),\qquad L=D-A$", EQ_X, 1.3, size=28)
+    native(s, "diffusion", y=y + 0.1, bottom=7.1)
+
+    s = d.slide("Felix's GDAR: learn the spread from data")
+    y = add_equation(s, r"$x(t+1)=\sum_{k=1}^{K}A_k\,x(t-k+1)+e(t),\qquad A_k=A_k^{\top},\quad A_k\ \mathrm{zero\ off\ the\ graph}$", EQ_X, 1.25, size=24)
+    native(s, "gdar_fit", y=y + 0.05, bottom=6.6)
+    edge_key(s)
+    d.text(s, "One number per edge per lag: 1,152 numbers, and one operator for the whole day.", 6.65, 0.5,
+           size=NOTE_SIZE, bullet=False)
+
+
+def tp_slides(d):
+    s = d.slide("TP-GDAR: a few GDARs, mixed across the trial")
+    y = add_equation(s, r"$\Theta(p)=\sum_{j=1}^{r}w_j(p)\,\Theta_j,\qquad \Theta=[\,A_1\ \cdots\ A_K\,]$", EQ_X, 1.25, size=24)
+    native(s, "tp_mix", y=y + 0.05, bottom=6.6)
+    edge_key(s)
+    d.text(s, "Rank 2: 2,332 numbers. 16 separate fits: 18,432.", 6.65, 0.5, size=NOTE_SIZE, bullet=False)
+
+    s = d.slide("p is trial phase, warped per trial")
+    x0, wbin, top = LEFT + 0.1, (WIDTH - 0.2) / 16, 2.2
+    for ph, nm in enumerate(["hold", "plan", "move", "post"]):
+        d.label(s, nm, x0 + ph * 4 * wbin, top, 4 * wbin, 0.7, fill=TINT, size=24, bold=True)
+        for b in range(4):
+            d.label(s, f"{b + 1}/4", x0 + (ph * 4 + b) * wbin, top + 0.7, wbin, 0.55, size=16)
+    for i, ev in enumerate(["-400 ms", "target on", "go cue", "touch", "touch + 500 ms"]):
+        w = 2.4
+        cx = x0 + i * 4 * wbin
+        tx = min(max(cx - w / 2, x0 - 0.1), x0 + 16 * wbin + 0.1 - w)
+        box = d.text(s, ev, top + 1.35, 0.4, x=tx, w=w, size=18, bullet=False, color=MUTED)
+        box.text_frame.paragraphs[0].alignment = (PP_ALIGN.LEFT if i == 0 else PP_ALIGN.RIGHT if i == 4 else PP_ALIGN.CENTER)
+    d.text(s, "Go and touch are known only afterwards, so this p can't be used online.", 5.0, 0.6, size=22, bullet=False)
+
+
+def training_slides(d):
+    s = d.slide("Training 1: statistics per bin, then the baseline")
+    y = add_equation(s, r"$G_g=\sum_{t\in g}z(t)\,z(t)^{\top},\qquad C_g=\sum_{t\in g}z(t)\,x(t+1)^{\top}$", EQ_X, 1.6, size=28)
+    labels = ["Symmetric OLS, all bins", "Σ from its residuals, fixed", "Refit weighted by Σ⁻¹"]
+    bw = 3.85
+    for i, t in enumerate(labels):
+        d.label(s, t, LEFT + 0.1 + i * (bw + 0.19), y + 0.5, bw, 0.9, fill=TINT, size=20)
+    d.text(s, "Same estimator as Felix's fit_gdar: matches to 1e-11.", y + 1.8, 0.5, size=22, bullet=False)
+
+    s = d.slide("Training 2: the objective is the data loss")
+    y = add_equation(s, r"$L_g(\phi)=\phi^{\top}H_g\,\phi-2\,\phi^{\top}h_g,\qquad H_g=R^{\top}(G_g\otimes\Sigma^{-1})R$", EQ_X, 1.6, size=28)
+    y = add_equation(s, r"$J(W,\Phi)=\sum_{g=1}^{P}L_g(\sum_{j=1}^{r}W_{gj}\,\phi_j)$", EQ_X, y + 0.3, size=28)
+    d.text(s, "Directions the data excite count more.", y + 0.4, 0.5, size=22, bullet=False)
+
+    s = d.slide("Training 3: alternate two exact solves")
+    y = add_equation(s, r"$\mathrm{W\ step:}\quad(\Phi\,H_g\,\Phi^{\top})\,w_g=\Phi\,h_g$", EQ_X, 1.6, size=28)
+    y = add_equation(s, r"$\Phi\ \mathrm{step:}\quad(\sum_g w_g w_g^{\top}\otimes H_g)\,\mathrm{vec}\,\Phi=\sum_g w_g\otimes h_g$", EQ_X, y + 0.3, size=28)
+    d.text(s, "J never increases. Real fits took 5 to 7 sweeps.", y + 0.4, 0.5, size=22, bullet=False)
 
 
 def hosvd_slide(d):
     s = d.slide("HOSVD vs the joint fit: same vectors, different metric")
-    y = d.eq(s, r"$M=[\,\mathrm{vec}\,\hat{\Theta}_1;\ \dots;\ \mathrm{vec}\,\hat{\Theta}_P\,]=U\,S\,V^{\top},\qquad W=U_r,\quad \Theta_j=S_{jj}\,V_j$", 1.45, fs=24)
-    y = d.eq(s, r"$\mathrm{HOSVD\ minimises:}\quad \sum_g\ ||\,\Theta(p_g)-\hat{\Theta}_g\,||_F^{2}$", y + 0.2, fs=24)
-    y = d.eq(s, r"$\mathrm{The\ data\ want:}\quad \sum_g\ ||\,(\Theta(p_g)-\hat{\Theta}_g)\,G_g^{1/2}\,||_F^{2}$", y + 0.1, fs=24)
-    d.text(s, ["Felix's GDAR has no HOSVD: it fits one operator. HOSVD comes from TP model transformation, and was our first route",
-               "Each 22 × 352 operator is flattened along p (M is 16 × 7,744) and reshaped back, so lags, channels and support survive",
-               "The SVD treats all entries alike, so rank goes to poorly determined coefficients",
-               "Real OS-Pulse, held-out trials: HOSVD -45 to -7.5 nats/sample, joint fit -0.11 to +0.52",
-               "HOSVD was not run on IOS Reach; these fits use the joint route"], y + 0.2, 3.0, size=17)
+    y = add_equation(s, r"$\mathrm{HOSVD\ minimises:}\quad\sum_g\ \|\,\Theta(p_g)-\Theta_g^{\mathrm{bin}}\,\|_F^{2}$", EQ_X, 1.6, size=26)
+    y = add_equation(s, r"$\mathrm{The\ data\ want:}\quad\sum_g\ \|\,(\Theta(p_g)-\Theta_g^{\mathrm{bin}})\,G_g^{1/2}\,\|_F^{2}$", EQ_X, y + 0.25, size=26)
+    d.table(s, [["OS-Pulse, held-out gain (nats/sample)", ""], ["HOSVD", "-45 to -7.5"], ["Joint fit", "-0.11 to +0.52"]],
+            y + 0.5, [5.2, 2.4], row_h=0.5, size=18)
+    d.text(s, "Felix's GDAR has no HOSVD: it fits one operator. HOSVD was our first route to TP.", y + 2.3, 0.5,
+           size=NOTE_SIZE, bullet=False)
 
 
-def replication_slides(d):
-    figure_slide(d, "Other days: timing repeats, edge maps mostly don't", "14_days_comparison.png", None)
-    s = d.slide("Same gain on other days, different edges")
-    d.table(s, [["Hydrogen, day", "Trials", "Rank 2", "Separate fits", "Edges, r with 11-12"],
-                ["11-12 no stim", "320", "+0.190 / +0.248", "+0.211 / +0.392", "reference"],
-                ["08-23 no stim", "404", "+0.221 / +0.266", "+0.278 / +0.384", "0.15 / 0.47 (16 edges)"],
-                ["11-11 no light", "303", "+0.193 / +0.277", "+0.210 / +0.389", "0.12 / 0.15 (40 edges)"],
-                ["11-11 light", "307", "+0.242 / +0.400", "+0.292 / +0.610", "0.21 / 0.13 (40 edges)"]],
-            1.4, [2.5, 1.0, 2.55, 2.55, 3.3], row_h=0.44, size=15)
-    d.text(s, "Held-out gain over GDAR, nats/sample. Each cell: evoked left in / evoked removed.", 3.65, 0.4, size=14,
-           bullet=False, color=MUTED)
-    d.text(s, ["The gain and the timing of the weights repeat across days",
-               "Move-minus-rest edge maps mostly do not repeat, so don't read one day's map as a fixed anatomy of the switch",
-               "Weights run 0 to 1 by the choice of extreme bins, so overlap in range is partly by construction",
-               "Lit trials: the model has no input term, so these vertices can absorb the light (the jump in panel D)"],
-           4.15, 3.0, size=18)
+def vertex_eval_slides(d):
+    s = d.slide("From components to vertices")
+    y = add_equation(s, r"$\Theta(p)=\sum_{v}\lambda_v(p)\,\Theta_v,\qquad\lambda_v\geq 0,\qquad\sum_v\lambda_v=1$", EQ_X, 1.7, size=30)
+    d.text(s, ["Rank 2: the two extreme bins",
+               "Rank 3: the smallest triangle around all bins, so corners may never be visited",
+               "One choice of coordinates: only Θ(p) is unique"], y + 0.5, 3.0, size=24)
+
+    s = d.slide("Evaluation: held-out one-step likelihood")
+    y = add_equation(s, r"$\mathrm{gain}=\ell_{\mathrm{TP}}-\ell_{\mathrm{GDAR}}\quad(\mathrm{nats/sample})$", EQ_X, 1.7, size=30)
+    d.text(s, ["5-fold over trials, refit on each split",
+               "Each model has its own noise covariance"], y + 0.5, 2.0, size=24)
 
 
-def nine_node_slides(d):
-    title_slide(d, "Part 3: a control example",
-                "A sparse 9-node graph learned with TP-GDAR, an input at each node, one polytopic gain")
+def result_slides(d):
+    figure(d, "TP beats one GDAR on held-out trials and unseen task times", "tp_vs_gdar")
+    s = figure(d, "Rank 3, evoked left in: vertex 2 is an extrapolation", "vertices_r3_felix")
+    edge_key(s)
+    s = figure(d, "Rank 2, evoked removed: the switch returns only part way", "vertices_r2_induced")
+    edge_key(s)
+    figure(d, "Other days: timing repeats, edge maps mostly don't", "other_days")
+
+
+def limitations_slide(d):
+    s = d.slide("Limitations")
+    d.text(s, ["Trial phase uses go and touch, so it isn't known online",
+               "Weights describe the average trial, not each trial",
+               "One monkey, three days, and the channel map isn't confirmed with Noah"], 1.8, 4.0, size=26)
+
+
+def control_slides(d):
+    title_slide(d, "Part 3: a control demo", "A sparse 9-node graph learned with TP-GDAR, with an input at each node")
 
     s = d.slide("The example: 9 nodes, known truth, an input at each node")
-    y = d.eq(s, r"$x(t+1)=\sum_{k=0}^{1} A_k(p)\,x(t-k)+B\,u(t)+e(t),\qquad B=\mathrm{diag}(b_1,\dots,b_9)$", 1.45, fs=24)
-    y = d.eq(s, r"$\Theta(p)=[\,A_0(p)\ \ A_1(p)\ \ B\,]=(1-p)\,\Theta_0+p\,\Theta_1$", y + 0.15, fs=24)
-    d.text(s, ["3 × 3 grid, 12 edges, 2 lags, symmetric: 51 numbers per operator, of which 9 are input gains",
-               "Data: 30 trials of 200 samples at each of 7 values of p, with random input at every node",
-               "20 random plants in each of two cases. One unstable: spectral radius 0.90 at p = 0, 1.03 at p = 1. Two unstable: 1.03 at both",
-               "The second case was added after seeing the first, as a stress test",
-               "Instability is put in by design so a controller has something to fix. This says nothing about cortex"],
-           y + 0.3, 3.4, size=19)
+    y = add_equation(s, r"$x(t+1)=\sum_{k=1}^{2}A_k(p)\,x(t-k+1)+B\,u(t)+e(t)$", EQ_X, 1.5, size=26)
+    y = add_equation(s, r"$\Theta(p)=[\,A_1(p)\ \ A_2(p)\ \ B\,]=(1-p)\,\Theta_0+p\,\Theta_1$", EQ_X, y + 0.15, size=26)
+    d.text(s, ["3 × 3 grid, 12 edges: 51 numbers per operator",
+               "20 plants, unstable at one end of p or both (the second case added after seeing the first)",
+               "Instability by design: this says nothing about cortex"], y + 0.4, 3.0, size=22)
 
-    figure_slide(d, "TP-GDAR recovers the operators and the input gains", "15_nine_node_learning.png", None)
+    s = figure(d, "TP-GDAR recovers operators and input gains", "nine_learning")
+    edge_key(s, "edge; node = input gain")
 
-    s = d.slide("Polytopic control: one gain, checked at the vertices")
-    y = d.eq(s, r"$u=F\,\xi,\quad \xi(t)=[\,x(t);\ x(t-1)\,],\qquad \xi(t+1)=\left(\sum_v\,\lambda_v(p)\,A_v+B_cF\right)\xi(t)$", 1.45, fs=24)
-    y = d.eq(s, r"$(A_v+B_cF)^{\top}\,P\,(A_v+B_cF)\ \prec\ \alpha^{2}P\qquad \mathrm{at\ every\ vertex}\ v$", y + 0.15, fs=24)
-    y = d.eq(s, r"$\mathrm{Solved\ as\ an\ LMI\ in}\ \ Q=P^{-1},\ Y=FQ:\quad (A_vQ+B_cY)^{\top}\,(\alpha Q)^{-1}\,(A_vQ+B_cY)\ \prec\ \alpha Q$", y + 0.15, fs=22)
-    d.text(s, ["If it holds at the vertices it holds at every mix of them: every p, and p moving at any speed",
-               "The gain does not need to know p, only the fitted vertices and B",
-               "α sets a guaranteed decay rate. At α = 1 the fitted certificate held on the true plant in 0 of 20 plants, because the "
-               "solution sits on the LMI's boundary. At α = 0.9 it held in 20 of 20, in both cases",
-               "The loop is closed on the true plant, never on the fitted model"], y + 0.3, 3.3, size=18)
+    s = d.slide("One gain for every p: check the corners")
+    native(s, "polytopic_explainer_hold", y=1.3, w=7.9, h=3.75, panel_flags={
+        "Energy over time": dict(no_xaxis=True, no_yaxis=True, title="Energy over time, p held at 1"),
+        "Energy change per step": dict(text_y={"vertex": 0.7, "with the gain": 0.57})})
+    y = add_equation(s, r"$u=F\,\xi,\quad V=\xi^{\top}P\,\xi,\quad V(t+1)<\alpha^{2}\,V(t)\ \mathrm{at\ every\ vertex}$", EQ_X, 5.1, w=7.9, size=20)
+    d.text(s, "No margin (α = 1): the proof held on the true plant in 0 of 20 plants. α = 0.9: 20 of 20.", y + 0.05, 0.5,
+           w=7.9, size=16, bullet=False)
+    x = LEFT + 8.1
+    d.text(s, ["Feedback: input = F × recent activity",
+               "Energy V: how far the network is from rest",
+               "If energy shrinks at each vertex, it shrinks at every mix: any p, moving at any speed",
+               "F needs the fitted vertices, not p",
+               "Finding F and P is a convex problem (an LMI)",
+               "Tested on the true plant, never the fitted model"], 1.45, 5.5, x=x, w=13.333 - x - 0.3, size=17)
 
-    figure_slide(d, "Both gains stabilise every plant", "15_nine_node_control.png", None)
+    figure(d, "Both gains keep the network stable", "nine_control", panel_flags={"As p moves": dict(no_xaxis=True)})
+
+    s = d.slide("Consensus: every node reaches the target")
+    iw, ih = Image.open(POSTER).size
+    h = 5.3
+    w = h * iw / ih
+    s.shapes.add_movie(MP4, Inches((13.333 - w) / 2), Inches(1.25), Inches(w), Inches(h), poster_frame_image=POSTER, mime_type="video/mp4")
+    d.text(s, "Outer ring = target. Pooled LQR does this too: held error about 0.33 for both, set by the noise.", 6.65, 0.5,
+           size=NOTE_SIZE, bullet=False)
 
     s = d.slide("Here the vertices matter more than the LMI")
-    d.table(s, [["Median over 20 plants", "Stable at all p", "Worst true ρ", "rms x", "rms input"],
-                ["One unstable: open loop", "0 / 20", "1.030", "9.76", "0"],
-                ["Pooled LQR, R = 1", "20 / 20", "0.534", "0.311", "0.126"],
-                ["Polytopic, α = 0.9", "20 / 20", "0.501", "0.307", "0.171"],
-                ["Two unstable: open loop", "0 / 20", "1.030", "14.2", "0"],
-                ["Pooled LQR, R = 1", "20 / 20", "0.567", "0.314", "0.169"],
-                ["Polytopic, α = 0.9", "20 / 20", "0.506", "0.308", "0.184"]],
-            1.35, [4.3, 1.9, 1.9, 1.3, 1.5], row_h=0.36, size=14)
-    d.text(s, ["Pooled LQR stabilises every plant too: with an input at every node the gain can nearly cancel the mean operator",
-               "With the LMI set to minimise the gain (panels C, F), the same worst-case ρ takes less input: 15 to 35% less with two "
-               "unstable ends; with one, even down to ρ = 0.8 and 10 to 17% less below that",
-               "Noise suppression, rms x per unit of input, is about even",
-               "The fitted vertices can certify either gain: pooled LQR passes at rates 0.9 and 0.8 (19 or 20 of 20 on the true plant). "
-               "A rate-0.6 certificate exists for it in only 10 and 0 of 20; the LMI reaches 0.6 in all 40",
-               "Synthetic, linear, full state, no delay or actuator limits. A few inputs on real data is the real test"],
-           3.95, 3.4, size=16)
+    native(s, "nine_effort", y=1.3, bottom=5.15)
+    d.text(s, ["With an input at every node, pooled LQR stabilises everything too",
+               "The fitted vertices can certify either gain",
+               "The LMI reaches tighter rates (0.6: 40 of 40 plants, LQR 10 of 40) for less input"], 5.2, 2.0, size=20)
 
 
 def build():
     d = Deck()
     title_slide(d, "MPC replay and TP-GDAR",
                 "Part 1: model-predictive control, brain paper\n"
-                "Part 2: TP-GDAR vs Felix Schwock's GDAR, Hydrogen, IOS Reach\n"
-                "Part 3: polytopic control on a synthetic 9-node example")
+                "Part 2: graphs, GDAR and TP-GDAR on IOS Reach\n"
+                "Part 3: a control demo")
     mpc_slides(d)
-    title_slide(d, "Part 2: TP-GDAR", "The model, how it is trained, and what it finds on IOS Reach")
-    model_slides(d)
+    title_slide(d, "Part 2: TP-GDAR", "Graphs, GDAR, then a model that changes across the trial")
+    ios_slide(d)
+    graph_slides(d)
+    tp_slides(d)
     training_slides(d)
     hosvd_slide(d)
     vertex_eval_slides(d)
-    for title, name, notes in RESULT_SLIDES:
-        figure_slide(d, title, name, notes)
-    replication_slides(d)
+    result_slides(d)
     limitations_slide(d)
-    nine_node_slides(d)
+    control_slides(d)
     d.p.save(OUT)
     print("wrote", OUT, len(d.p.slides), "slides")
 

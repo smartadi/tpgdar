@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-g · Talk deck rebuilt: less text, editable shapes, IOS Reach, graphs and GDAR, consensus movie
+commit: 9d3a0c5+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** Rebuilt `GDAR-TP_MPC_and_TP-GDAR.pptx` (30 slides) for PowerPoint for the web: `scripts/deck_native.py` draws plots as grouped shapes and equations as text, because that app can't insert charts or equations and doesn't play GIFs in Slide Show. Only the two Figure 6 slides stay pictures; the movie is an embedded MP4, made through desktop PowerPoint (no ffmpeg here). Added slides on IOS Reach, graphs and GDAR; new low-text figures from `make_deck_figures_real.py`, `_nine.py` and `make_deck_figure_ios.py`. New `scripts/17_consensus_demo.py`: both gains reach the target about equally (RESULTS.md). The corner slide holds p at 1, since under the moving schedule without noise no-control energy also decays.
+**State:** deck done, exported through desktop PowerPoint and viewed; not opened in PowerPoint for the web, and the schema validator can't run on this PC. Plotted numbers aren't linked to the shapes. Open: a possible step in `lfp noart` at target onset, reported by a read of the data and not yet checked against the gains; the channel map and brain area need Noah. Trial-level prediction was set aside at Aditya's request, unfinished. The few-input files (`gdar_tp/control.py`, script 16) belong to another session and aren't in this commit.
+**Resume:** run the three figure scripts, then `.venv\Scripts\python scripts/make_mpc_tp_deck.py`.
+
 ### L-2026-11-04-f · Inputs at chosen nodes, for the few-input control example
 commit: 75f5d2b+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** `symmetric_basis(..., node_inputs=[...])` now takes a list of input nodes as well as True; one test added. The functions in `scripts/15_nine_node_control.py` work for any number of inputs; results at 9 inputs are unchanged by construction, and the lag operators of a plant don't depend on the input nodes, so plants are nested across input counts.
