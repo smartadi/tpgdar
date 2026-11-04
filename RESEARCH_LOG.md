@@ -2,6 +2,17 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-a · Vertex graphs of TP-GDAR and their weights across the trial (no-stim IOS Reach)
+commit: e75b0aa+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:**
+- Added `polytope_vertices` to `gdar_tp/sym_tp.py` (convex form in the pooled data metric; rank 2 extreme grid points, rank 3 smallest enclosing triangle on hull edges) and `scripts/13_tp_vertices_ios.py`. A first try with 3 grid points as rank-3 vertices left the trajectory up to 52 % of its spread outside (evoked left in), so it was replaced. 48 tests pass.
+- H 2021-11-12, K = 16, p = trial phase warped per trial (hold, plan, move, post, 4 bins each). Held-out gain over GDAR, evoked left in / removed: rank 2 +0.190 / +0.248, rank 3 +0.222 / +0.323, 16 separate fits +0.211 / +0.392.
+- Rank 2 is a two-state switch: one vertex through hold and early plan, the other from late plan (before the go cue) through move and early post, then back or part way back after touch. Vertex 1 vs 2 model spectrum differs by about 8 dB near 15 Hz. Weights are tight (median jackknife SE 0.016 to 0.027). Sum-to-one error 0.033 / 0.037.
+- Spectral radius barely separates the vertices with evoked left in (0.964, 0.965); with evoked removed the hold vertex is slower (0.947 vs 0.929).
+
+**State:** done for one session. Numbers in `RESULTS.md`, figures `figures/13_vertices_{felix,induced}_r{2,3}.png`, cache `cache/13_*` (git-ignored). Vertices are one coordinate choice for the family; rank-3 corners are not visited by the data (evoked left in, vertex 2 is 1.01 of the spread from any bin). With evoked removed, plan 1/4 is an abrupt outlier: not explained yet. Channel map still unconfirmed.
+**Resume:** replicate on H 2021-08-23 to see whether the switch and vertex maps repeat; look into plan 1/4; check the 15 Hz change against the data spectrum. `.venv\Scripts\python scripts/13_tp_vertices_ios.py [--plot]`.
+
 ### L-2026-11-02-a · TP-GDAR vs Felix's GDAR, no input, on a no-stim IOS Reach day
 commit: 5dcdc2e+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:**

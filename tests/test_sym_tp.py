@@ -4,7 +4,8 @@ import numpy as np
 
 from gdar_tp.graph import grid_graph
 from gdar_tp.sim.linear import simulate_gdar
-from gdar_tp.sym_tp import fit_gls_pooled, fit_sym_tp, symmetric_basis, theta_of
+from gdar_tp.sym_tp import (_quad, fit_gls_pooled, fit_sym_tp, polytope_vertices, symmetric_basis,
+                            theta_of)
 from gdar_tp.tpgdar import stack_stats, trial_stats
 
 
@@ -51,6 +52,21 @@ def test_objective_never_increases_and_recovers_rank_2():
     rel = np.linalg.norm(m.theta_grid() - truth) / np.linalg.norm(truth)
     pooled = np.stack([theta_of(phi, R, N)] * len(grid))
     assert rel < 0.5 * np.linalg.norm(pooled - truth) / np.linalg.norm(truth)
+
+
+def test_polytope_vertices_are_convex_and_reconstruct():
+    stats, R, N, K, grid, truth, _ = _setup(P=5)
+    tot = {k: stats[k].sum(0) for k in stats}
+    _, Sig = fit_gls_pooled(tot["Gzz"], tot["Gzy"], tot["Syy"], tot["n"], R)
+    m = fit_sym_tp(stats, R, Sig, 2, grid)
+    H, _ = _quad(tot["Gzz"], tot["Gzy"], R, np.linalg.pinv(Sig))
+    v = polytope_vertices(m, H)
+    assert set(v["index"].tolist()) == {0, 4}
+    assert np.all(v["lam"] >= 0) and np.allclose(v["lam"].sum(1), 1)
+    assert np.all(np.diff(v["lam"][:, list(v["index"]).index(4)]) > 0)
+    recon = np.stack([theta_of(l @ v["phi"], R, N) for l in v["lam"]])
+    assert np.linalg.norm(recon - truth) < 0.1 * np.linalg.norm(truth)
+    assert v["affine_err"] < 0.2 and v["outside"] < 0.05
 
 
 def test_full_rank_equals_per_condition():

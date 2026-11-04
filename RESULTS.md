@@ -370,3 +370,36 @@ at 32). The channel-to-position map assumes Noah's channel numbers follow the `3
 day, since a fixed day-wide operator is what TP is compared with.
 
 Figures: `figures/12_tp_vs_gdar_prediction.png`, `figures/12_tp_vs_gdar_operators.png`.
+
+## Vertex graphs and weights across the trial  (`13_tp_vertices_ios.py`) — 2026-11-04
+
+Same day and model as above (H 2021-11-12, K = 16, symmetric TP-GDAR). Each trial is warped
+onto p = trial phase: hold, plan, move, post, 4 bins of each phase's own duration. Convex form
+Θ(p) = Σ_v λ_v(p) Θ_v, distances in the pooled data metric. Rank 2 vertices are the two
+extreme bins. Rank 3 vertices are the corners of the smallest triangle on hull edges that
+contains the trajectory, so they need not be visited by the data.
+
+| held-out gain over GDAR, nats/sample | evoked left in | evoked removed |
+|---|---|---|
+| rank 2 | +0.190 ± 0.009 | +0.248 ± 0.012 |
+| rank 3 | +0.222 ± 0.009 | +0.323 ± 0.013 |
+| 16 separate fits | +0.211 | +0.392 |
+
+(± is SE over 5 folds. Not comparable with the 4-phase table above: this grid and sample set differ.)
+
+- **Rank 2 reads as a switch.** One vertex holds through hold and early plan, and the other takes
+  over during late plan, before the go cue, and stays through move and early post. After touch
+  the weights go back: fully with evoked left in, about half way with evoked removed.
+- **Vertices differ near 15 Hz.** Rank-2 model spectrum about +3 dB / -5 dB re GDAR at the two
+  vertices (evoked left in). Model only, not yet checked against the data spectrum.
+- **Weights are tight:** median jackknife SE 0.016 to 0.027, though the 5 training splits overlap.
+- **Stability:** vertex spectral radii 0.964, 0.965 with evoked left in; 0.947 (hold), 0.929
+  (move) with evoked removed. Single vertices only; no common Lyapunov test was run.
+
+**Limits:** vertices are one choice of coordinates for the fitted family; only the family is
+unique. Edge maps sum over lags and hide lag structure. Evoked-left-in rank-3 vertex 2 is 1.01
+of the trajectory spread from any bin, so its strong coupling is an extrapolation. With evoked
+removed, plan 1/4 is an abrupt outlier at target onset (it becomes a rank-3 vertex), not explained
+yet. One session; channel map not confirmed with Noah.
+
+Figures: `figures/13_vertices_{felix,induced}_r{2,3}.png`.

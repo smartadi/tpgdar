@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import scipy.sparse as sp
 
+from .tp import _barycentric
 from .tpgdar import resid_cov_sum
 
 
@@ -109,6 +110,75 @@ class SymTP:
         """Free numbers: r operators plus the weights, less the r^2 of the gauge."""
         P, r = self.W.shape
         return r * self.phi.shape[1] + P * r - r * r
+
+
+def polytope_vertices(model, Hbar):
+    """Convex form of a rank-r fit: ``Theta(p_g) = sum_v lam[g, v] Theta_v``, lam >= 0, sum 1.
+
+    Distances are in the pooled data metric ``Hbar``, not the unweighted coefficients.
+    Rank 2: the two extreme grid points, which contain the trajectory.  Rank 3: the
+    smallest triangle on three convex-hull edges, which contains it too, but whose corners
+    are generally not grid points (``index`` then gives the nearest one, ``dist`` how far,
+    as a fraction of the spread).  Higher ranks: successive projection onto grid points,
+    which need not contain it; ``outside`` reports the miss and ``affine_err`` the cost of
+    sum-to-one.  Vertices stay symmetric and graph-supported.
+    """
+    W, phi = model.W, model.phi
+    P, r = W.shape
+    a = np.linalg.lstsq(W, np.ones(P), rcond=None)[0]
+    affine_err = float(np.max(np.abs(W @ a - 1)))
+    Wa = W + np.outer(1 - W @ a, a) / (a @ a)
+    L = np.linalg.cholesky(phi @ Hbar @ phi.T + 1e-12 * np.eye(r))
+    Y = Wa @ L
+    c = Y.mean(0)
+    spread = np.max(np.linalg.norm(Y - c, axis=1))
+    if r == 3:
+        _, _, Vt = np.linalg.svd(Y - c, full_matrices=False)
+        tri = _enclosing_triangle((Y - c) @ Vt[:2].T)
+        Yv = tri @ Vt[:2] + c
+        lam = _barycentric(Yv, Y)
+        dist = np.linalg.norm(Y[:, None] - Yv[None], axis=2)
+        return dict(index=dist.argmin(0), dist=dist.min(0) / spread, lam=lam,
+                    phi=np.linalg.solve(L.T, Yv.T).T @ phi, affine_err=affine_err,
+                    outside=float(np.max(np.linalg.norm(lam @ Yv - Y, axis=1)) / spread))
+    idx = [int(np.argmax(np.linalg.norm(Y - c, axis=1)))]
+    while len(idx) < r:
+        basis = Y[idx[1:]] - Y[idx[0]] if len(idx) > 1 else np.zeros((0, r))
+        res = Y - Y[idx[0]]
+        if len(basis):
+            Q, _ = np.linalg.qr(basis.T)
+            res = res - res @ Q @ Q.T
+        idx.append(int(np.argmax(np.linalg.norm(res, axis=1))))
+    lam = _barycentric(Y[idx], Y)
+    outside = float(np.max(np.linalg.norm(lam @ Y[idx] - Y, axis=1)) / spread)
+    return dict(index=np.array(idx), dist=np.zeros(r), lam=lam, phi=Wa[idx] @ phi,
+                affine_err=affine_err, outside=outside)
+
+
+def _enclosing_triangle(Y2):
+    """Smallest triangle containing the 2-D points whose sides lie on convex-hull edges."""
+    from itertools import combinations
+
+    from scipy.spatial import ConvexHull
+
+    eq = ConvexHull(Y2).equations           # n . x + b <= 0 inside
+    best, best_area = None, np.inf
+    for tr in combinations(range(len(eq)), 3):
+        E = eq[list(tr)]
+        try:
+            V = np.stack([np.linalg.solve(E[[a, b], :2], -E[[a, b], 2])
+                          for a, b in ((1, 2), (0, 2), (0, 1))])
+        except np.linalg.LinAlgError:
+            continue
+        # bounded only if the outward normals positively span the plane
+        M = np.vstack([E[:, :2].T, np.ones(3)])
+        if np.linalg.cond(M) > 1e12 or np.any(np.linalg.solve(M, [0, 0, 1]) <= 0):
+            continue
+        u, v = V[1] - V[0], V[2] - V[0]
+        area = abs(u[0] * v[1] - u[1] * v[0]) / 2
+        if area < best_area:
+            best, best_area = V, area
+    return best
 
 
 def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10):
