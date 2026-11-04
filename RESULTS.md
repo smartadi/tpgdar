@@ -489,6 +489,94 @@ fast p is covered by the certificate only, not simulated.
 
 Figures: `figures/15_nine_node_learning.png`, `figures/15_nine_node_control.png`. Log: `cache/15_run.log`.
 
+## Few inputs on the 9-node example  (`16_nine_node_few_inputs.py`) — 2026-11-04
+
+The 20 plants per case and the data amounts of script 15, with inputs only at some nodes, by a rule fixed before
+any result: M = 1 [4], M = 2 [0, 8], M = 3 [0, 4, 8], M = 5 [0, 2, 4, 6, 8], M = 9 all. Script 15's M = 9 worst rho
+reproduces to 3 decimals. The loop is closed on the true plant only. Every gain is fixed and does not know p.
+
+**Do few inputs separate the controllers? Yes, but only with two unstable ends and at most 3 inputs, and by
+less than the first look suggested.** On 11 of those 60 plants the LMI stabilises and no LQR gain tried does. With
+one unstable end, or with 5 or more inputs, stability does not separate them.
+
+| plants of 20 stable at all p, M = 1 / 2 / 3 / 5 / 9 | one unstable | two unstable |
+|---|---|---|
+| polytopic LMI | 20 / 20 / 20 / 20 / 20 | 20 / 20 / 20 / 20 / 20 |
+| its certificate, on the true plant at rate 1 | 19 / 20 / 20 / 20 / 20 | 17 / 18 / 19 / 20 / 20 |
+| LQR family, one gain picked on the fit | 20 / 20 / 20 / 20 / 20 | 16 / 14 / 19 / 20 / 20 |
+| its certificate, same test | 16 / 18 / 18 / 20 / 20 | 12 / 9 / 18 / 20 / 20 |
+| any gain in the family, with the truth to pick | 20 / 20 / 20 / 20 / 20 | 16 / 14 / 19 / 20 / 20 |
+| any gain from the p-blind fits only, with the truth to pick | 20 / 20 / 20 / 20 / 20 | 12 / 12 / 18 / 20 / 20 |
+| LQR on mean vertex, R = 1 | 14 / 9 / 17 / 20 / 20 | 9 / 4 / 16 / 20 / 20 |
+| LQR on pooled fit with trials normalised, R = 1 | 14 / 12 / 18 / 20 / 20 | 10 / 7 / 17 / 20 / 20 |
+| LQR on pooled fit, R = 1 | 19 / 20 / 20 / 20 / 20 | 0 / 1 / 6 / 17 / 20 |
+| open loop | 0 at every M | 0 at every M |
+
+The LQR family is every fit (pooled, normalised, mean vertex, each vertex) by R from 0.001 to 10^4 by a prescribed
+decay of 1, 0.95, 0.9 or 0.8: up to 160 gains per plant. The gain with the lowest spectral radius across the
+fitted model is used, so it needs the TP-GDAR fit but not the LMI, and the truth only scores it. Polytopic design:
+alpha = 0.9 as in script 15, or else the next looser alpha where the LMI holds on the fit.
+
+| median: worst true rho, rms x, rms input | M = 1 | M = 2 | M = 3 | M = 5 | M = 9 |
+|---|---|---|---|---|---|
+| one unstable: polytopic | 0.877, 0.400, 0.359 | 0.880, 0.477, 0.398 | 0.829, 0.357, 0.234 | 0.654, 0.330, 0.202 | 0.501, 0.307, 0.171 |
+| LQR on pooled fit, R = 1 | 0.903, 0.385, 0.304 | 0.930, 0.429, 0.281 | 0.860, 0.357, 0.170 | 0.724, 0.332, 0.152 | 0.534, 0.311, 0.126 |
+| LQR family, picked on the fit | 0.809, 0.499, 0.797 | 0.882, 0.643, 0.882 | 0.716, 0.394, 0.367 | 0.617, 0.331, 0.225 | 0.420, 0.308, 0.150 |
+| two unstable: polytopic | 0.882, 0.501, 0.465 | 0.883, 0.622, 0.791 | 0.848, 0.374, 0.266 | 0.698, 0.337, 0.224 | 0.506, 0.308, 0.184 |
+| LQR on pooled fit, R = 1 | 82.1, diverged in 20 | 1.67, diverged in 18 | 1.15, diverged in 12 | 0.814, 0.386, 0.281, diverged in 3 | 0.567, 0.314, 0.169 |
+| LQR family, picked on the fit | 0.897, 0.727, 0.778 | 0.942, 1.14, 1.04 | 0.764, 0.421, 0.355 | 0.635, 0.342, 0.251 | 0.416, 0.309, 0.162 |
+
+Open loop: worst rho 1.030 and median rms x 9.76 (one unstable), 13.86 (two unstable). Rms values are over the runs
+that didn't diverge. Rank-2 operator error is 0.019 at M = 1 down to 0.004 at M = 9, about the same in both cases.
+
+| plants of 20 where the LMI holds on the fit, alpha = 0.6 / 0.8 / 0.9 / 0.95 / 0.98 / 0.995 / 1 | one unstable | two unstable |
+|---|---|---|
+| M = 1 | 0 / 10 / 18 / 19 / 19 / 20 / 20 | 0 / 6 / 13 / 16 / 17 / 20 / 20 |
+| M = 2 | 0 / 13 / 20 / 20 / 20 / 20 / 20 | 0 / 6 / 14 / 20 / 20 / 20 / 20 |
+| M = 3 | 10 / 19 / 20 / 20 / 20 / 20 / 20 | 3 / 19 / 20 / 20 / 20 / 20 / 20 |
+| M = 5 | 20 at every alpha | 19 / 20 / 20 / 20 / 20 / 20 / 20 |
+| M = 9 | 20 at every alpha | 20 at every alpha |
+
+- **The rho in the hundreds is mostly an artefact of the energy-weighted pooled fit.** With two unstable ends the
+  pooled lag operator is 0.66 to 0.68 off the truth (0.34 to 0.39 when trials are normalised), and it has a spurious
+  unstable mode that the inputs hardly reach: reach 0.030 at M = 1 against 0.38 to 0.44 on the truth. LQR answers
+  with a huge gain (median norm 35,000 at M = 1) that wrecks the true plant. The input gains are not the problem:
+  they are recovered well. Normalising trials removes the hundreds (norm 0.68, worst rho 0.994 at M = 1).
+- **What remains is a real limit of a p-blind fit, though a smaller one.** The normalised fit reaches 10 and 7 of 20
+  at M = 1, 2, and even with the truth to pick from its gains and the pooled ones, 12 and 12. LQR on the mean vertex
+  is no better at R = 1, so the TP-GDAR fit alone does not rescue it.
+- **With one unstable end, pooled LQR is fine.** The energy weighting lands the pooled fit on the unstable end, the
+  one that needs controlling (reach 0.38 on both). Where it is stable (19 plants at M = 1, all 20 otherwise) it
+  regulates about as well as the LMI on less input, at every M.
+- **TP-GDAR's fit gets more plants by checking gains without touching the plant:** 16, 14, 19 of 20 at M = 1, 2, 3.
+  All 11 failures showed rho >= 1 on the fit, and picking on the fit lost nothing against picking with the truth.
+- **The LMI gets the rest, not always comfortably.** Of the 11 plants only it stabilises, the certificate holds on
+  the true plant in 6. Worst rho is 0.861 to 0.994. One plant (seed 8) is stable at M = 2 and 3 with rms x 6.9 and 6.5,
+  above its open-loop 4.8, with rms input near 10. Stable is not the same as well regulated.
+- **Why tighter alpha looked worse on M = 1, seed 0:** alpha = 0.98, 0.95, 0.9 aren't solutions. The solver says
+  `optimal_inaccurate`, the LMI residual on the fit is +0.018 to +0.48, and rho on the fit is already 1.02 to 1.12.
+  Quadratic stability with one gain at that rate isn't available there. An LMI now counts as solved only if it holds
+  when checked on the fit (`lmi_residual`). By that test the first look's "feasible everywhere" was wrong (M = 1, two
+  unstable, alpha = 0.9: the solver answers on 20, the LMI holds on 13). Script 15's rate-0.6 claim at M = 9 survives:
+  20/20 in both cases, certificate 20/20, worst true rho at most 0.534 and 0.544.
+- **Effort has no consistent winner.** On plants where both reach a worst rho target (0.98 to 0.8), least input over
+  settings differs by up to about 40 % either way. With one unstable end the family usually needs less above 0.8; with
+  two and M <= 3 the LMI usually does. The family picks from 160 gains with the truth and the LMI from 7 alphas, so
+  this favours LQR. This also revises script 15: its 15 to 35 % saving at M = 9 with two unstable ends was against
+  pooled LQR over R. Against the family it is at most 14 %, and about zero at rho targets 0.98 and 0.95.
+- **Reach of a fast rate:** at M = 2 the LMI reaches rho <= 0.8 on more plants (13 vs 3, 5 vs 2). Elsewhere it is
+  close, and at M = 1 with one unstable end the family reaches it more often (10 vs 7). At M = 9 the family goes lower
+  than the alpha = 0.9 LMI (0.42 vs 0.50), so a prescribed-decay LQR can also be fast.
+
+**Limits:** synthetic designed plants, instability by design, so this says nothing about cortex. Linear, full state,
+no delay or actuator limits. One fixed placement rule, not optimised and not varied. The two-unstable case is a stress
+test, added in script 15 after seeing the first case. Slow schedule of p in the simulations. "No LQR gain" means none in
+this grid with Q = I; no direct search over F was tried, so this does not prove that only an LMI can do it. The family's
+pick minimises rho, not input, which is why its rms input runs higher. 20 plants per cell. Panel C's plant was fixed
+before results, and there the family works too.
+
+Figure: `figures/16_few_inputs.png`. Log: `cache/16_run.log`.
+
 ## Consensus on the 9-node example  (`17_consensus_demo.py`) — 2026-11-04
 
 Same plants as script 15 (20 per case), with the input at every node. Integral action per node,

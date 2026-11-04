@@ -73,10 +73,14 @@ class SynthesisResult:
     max_rho: float          # worst closed-loop spectral radius over vertices
     solver: str = ""
     status: str = ""
+    # worst lam_max(A_cl' P A_cl - decay^2 P) over the vertices, P = Q^-1 with ||P|| = 1.  A solver can
+    # call a near-infeasible problem "optimal_inaccurate": a clearly positive value means the LMI
+    # does not hold, whatever the status and even if ``feasible`` (rho < 1 at the vertices) is True.
+    lmi_residual: float = np.nan
 
 
 def synthesize_quadratic_feedback(vertex_A, B, margin=1e-6, solver=None,
-                                   normalize=True, decay=1.0, min_gain=False):
+                                   normalize=True, decay=1.0, min_gain=False, q_max=100.0):
     """Quadratic-stability state feedback over the polytope.
 
     Parameters
@@ -90,6 +94,8 @@ def synthesize_quadratic_feedback(vertex_A, B, margin=1e-6, solver=None,
         does not survive any model error; below 1 it leaves room.
     min_gain : bool, minimise a bound on ``||Y||`` (with ``Q >= I``, a bound on the
         gain) instead of ``trace(Q)``.
+    q_max : float, with ``min_gain``, upper bound ``Q <= q_max I`` that keeps the problem bounded.
+        Too low a value makes a problem with few inputs falsely infeasible.
 
     Returns
     -------
@@ -112,14 +118,14 @@ def synthesize_quadratic_feedback(vertex_A, B, margin=1e-6, solver=None,
     if min_gain:
         t = cp.Variable()
         cons.append(cp.vstack([cp.hstack([t * np.eye(m), Y]), cp.hstack([Y.T, np.eye(nx)])]) >> 0)
-        cons.append(Q << 100 * np.eye(nx))
+        cons.append(Q << q_max * np.eye(nx))
         objective = cp.Minimize(t)
     else:
         objective = cp.Minimize(cp.trace(Q))
     prob = cp.Problem(objective, cons)
     _solve(prob, solver)
 
-    return _finish(prob, Q, Y, comp, Bc, "quadratic")
+    return _finish(prob, Q, Y, comp, Bc, "quadratic", decay)
 
 
 def synthesize_slack_feedback(vertex_A, B, margin=1e-6, solver=None):
@@ -169,7 +175,13 @@ def _solve(prob, solver):
             continue
 
 
-def _finish(prob, Q, Y, comp, Bc, method):
+def _lmi_residual(comp, Bc, F, Q, decay):
+    P = np.linalg.inv(Q)
+    P = P / np.linalg.norm(P, 2)
+    return max(float(np.linalg.eigvalsh((Ac + Bc @ F).T @ P @ (Ac + Bc @ F) - decay ** 2 * P).max()) for Ac in comp)
+
+
+def _finish(prob, Q, Y, comp, Bc, method, decay=1.0):
     if prob.status not in ("optimal", "optimal_inaccurate") or Q.value is None:
         return SynthesisResult(F=None, Q=None, feasible=False, method=method,
                                max_rho=np.inf, status=prob.status)
@@ -177,7 +189,8 @@ def _finish(prob, Q, Y, comp, Bc, method):
     F = Y.value @ np.linalg.inv(Qv)
     max_rho = closed_loop_max_rho(comp, Bc, F)
     return SynthesisResult(F=F, Q=Qv, feasible=max_rho < 1.0, method=method,
-                           max_rho=max_rho, status=prob.status)
+                           max_rho=max_rho, status=prob.status,
+                           lmi_residual=_lmi_residual(comp, Bc, F, Qv, decay))
 
 
 def closed_loop_max_rho(comp_vertices, Bc, F):
