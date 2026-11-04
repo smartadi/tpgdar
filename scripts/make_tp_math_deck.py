@@ -135,13 +135,10 @@ class Deck:
         r.font.size, r.font.bold, r.font.name, r.font.color.rgb = Pt(size), bold, "Calibri", INK
 
 
-def build():
-    d = Deck()
-
+def title_slide(d, title, subtitle):
     s = d.p.slides.add_slide(d.title_slide)
-    s.shapes.title.text = "TP-GDAR: the model and how it is trained"
-    s.placeholders[1].text = ("Symmetric TP-GDAR compared with Felix Schwock's GDAR\n"
-                              "Worked example: Hydrogen 2021-11-12, IOS Reach, no stim")
+    s.shapes.title.text = title
+    s.placeholders[1].text = subtitle
     for para in s.shapes.title.text_frame.paragraphs:
         para.alignment = PP_ALIGN.LEFT
         for r in para.runs:
@@ -151,6 +148,8 @@ def build():
         for r in para.runs:
             r.font.size, r.font.name, r.font.color.rgb = Pt(20), "Calibri", MUTED
 
+
+def model_slides(d):
     s = d.slide("Felix's GDAR: one operator for the whole day")
     y = d.eq(s, r"$z(t)=\left[\,x(t);\ x(t-1);\ \dots;\ x(t-K+1)\,\right]$", 1.5)
     y = d.eq(s, r"$x(t+1)=\Theta\,z(t)+e(t),\qquad e(t)\sim\mathcal{N}(0,\Sigma),\qquad \Theta=[\,A_1\ \cdots\ A_K\,]$", y + 0.2)
@@ -188,6 +187,8 @@ def build():
                "A sample belongs to the bin of its target x(t+1); its lags can reach into the previous bin",
                "Go and touch times are known only afterwards, so this warped p cannot be used online"], y + 0.3, 1.7)
 
+
+def training_slides(d):
     s = d.slide("Training 1: statistics per bin, then the baseline")
     y = d.eq(s, r"$G_g=\sum_{t\in g} z(t)\,z(t)^{\top},\qquad C_g=\sum_{t\in g} z(t)\,x(t+1)^{\top},\qquad S_g=\sum_{t\in g} x(t+1)\,x(t+1)^{\top}$", 1.5)
     d.text(s, "Summed within trials, never across a trial boundary. The rest of the fit uses only these sums.",
@@ -198,7 +199,7 @@ def build():
     for i, t in enumerate(labels):
         d.label(s, t, LEFT + 0.1 + i * (bw + 0.19), y, bw, 0.8, fill=TINT, size=16)
     y = d.eq(s, r"$\hat{\Sigma}=\frac{1}{n}\sum_{g}\sum_{t\in g}\ \left(x(t+1)-\Theta_{\mathrm{OLS}}\,z(t)\right)\left(x(t+1)-\Theta_{\mathrm{OLS}}\,z(t)\right)^{\top}$", y + 1.05)
-    d.text(s, ["This is Felix's estimator; on one trial it matches his fit_gdar to a relative difference of 1e-11",
+    d.text(s, ["This is Felix's estimator; on one trial it matches Felix's fit_gdar to a relative difference of 1e-11",
                "Preprocessing first: decimate by 3 to 333 Hz, demean each trial, optionally remove evoked kernels"], y + 0.2, 1.1)
 
     s = d.slide("Training 2: the objective is the data loss")
@@ -221,6 +222,8 @@ def build():
                "Stop at a relative change in J below 1e-7, or 40 sweeps (25 on training splits); real fits took 5 to 7",
                "No penalty beyond numerical jitter of 1e-10, matching Felix's unpenalised fit"], y + 0.2, 1.5)
 
+
+def vertex_eval_slides(d):
     s = d.slide("From components to vertices")
     y = d.eq(s, r"$\Theta(p)=\sum_{v}\lambda_v(p)\,\Theta_v,\qquad \lambda_v\geq 0,\qquad \sum_v\lambda_v=1$", 1.5, fs=28)
     d.text(s, ["Find a with Wa ≈ 1 and project W onto that plane (worst error 0.033 to 0.037 at rank 2, about 0.02 at rank 3)",
@@ -238,6 +241,8 @@ def build():
                "Weight uncertainty: express each split's fit in the full-data vertices and take the jackknife SE",
                "K = 16 was picked on the baseline only; the Felix likelihood is still rising at K = 32"], y + 0.3, 2.4)
 
+
+def result_slide(d):
     s = d.slide("Result: rank 2 acts as a switch across the trial")
     s.shapes.add_picture(os.path.join(ROOT, "figures", "13_vertices_felix_r2.png"), Inches(LEFT), Inches(1.4), height=Inches(5.7))
     d.table(s, [["Gain over GDAR", "Evoked in", "Removed"], ["Rank 2", "+0.190", "+0.248"], ["Rank 3", "+0.222", "+0.323"],
@@ -247,14 +252,28 @@ def build():
                "One vertex through hold and early plan, the other from late plan through move and early post"],
            3.5, 2.6, x=8.75, w=4.05, size=15)
 
+
+def limitations_slide(d):
     s = d.slide("Limitations of the procedure")
     d.text(s, ["Phase is not known in real time: bins use go and touch times, and the model does not infer phase from neural activity",
                "Weights describe the average trial; they depend only on the bin, not on trial-to-trial state",
                "Bins can only be interpolated if they are ordered; the 4-phase grid has nothing to interpolate",
                "Σ is shared and fixed during the alternation, so this is not a full maximum-likelihood fit",
                "Vertices are one choice of coordinates for the fitted family",
-               "One session so far, and Noah has not confirmed the channel map"], 1.5, 5.2, size=20)
+               "One monkey, three days: the timing of the weights repeats, but the edge maps mostly do not. "
+               "Noah has not confirmed the channel map"], 1.5, 5.2, size=20)
 
+
+def build():
+    d = Deck()
+    title_slide(d, "TP-GDAR: the model and how it is trained",
+                "Symmetric TP-GDAR compared with Felix Schwock's GDAR\n"
+                "Worked example: Hydrogen 2021-11-12, IOS Reach, no stim")
+    model_slides(d)
+    training_slides(d)
+    vertex_eval_slides(d)
+    result_slide(d)
+    limitations_slide(d)
     d.p.save(OUT)
     print("wrote", OUT, len(d.p.slides), "slides")
 
