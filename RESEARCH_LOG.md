@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-b · Plain deck on the TP-GDAR model and training, with rendered equations
+commit: 0225898+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** Added `scripts/make_tp_math_deck.py` and `GDAR-TP_model_training.pptx` (11 slides: Felix's GDAR, TP structure, warped trial phase, training in 3 steps, vertices, evaluation, result, limitations). Equations are images (matplotlib mathtext, LaTeX in the alt text), so they are not editable in PowerPoint. No new analysis.
+**State:** done. Opened and exported through PowerPoint and checked by eye. The pptx skill's schema validator could not load its schemas on this PC (same error on the older overview deck), so no schema check ran.
+**Resume:** edit the script and re-run `.venv\Scripts\python scripts/make_tp_math_deck.py`; it needs `figures/13_vertices_felix_r2.png` from script 13.
+
 ### L-2026-11-04-a · Vertex graphs of TP-GDAR and their weights across the trial (no-stim IOS Reach)
 commit: e75b0aa+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:**
