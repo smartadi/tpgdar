@@ -623,3 +623,36 @@ that bin is no longer a vertex. Vertex labels aren't comparable between fits, so
 
 **Limits:** 11-12 only. Scripts 12 and 13, and script 14 on 08-23, still run unmasked, and their vertex maps weren't
 refit with the mask. A zero-phase decimation filter may spread a step past the mask, so some may remain.
+
+## HOSVD vs the joint fit on IOS Reach  (`12d_hosvd_vs_joint.py`) — 2026-11-04
+
+H 2021-11-12, 16 warped bins, K = 16, 5-fold, same score as scripts 12 and 13. Every low-rank step starts from the
+same per-bin GLS fits. With one parameter mode, HOSVD is one SVD, so it is the exact best fit in the Frobenius metric.
+"Metric SVD" is the same SVD in the pooled data metric, a closed form. The steps at target onset aren't masked.
+
+Held-out gain over GDAR, nats/sample:
+
+| rank | evoked left in: HOSVD | metric SVD | joint | evoked removed: HOSVD | metric SVD | joint |
+|---|---|---|---|---|---|---|
+| 1 | -0.094 | +0.084 | +0.107 | -3.234 | +0.081 | +0.133 |
+| 2 | +0.016 | +0.180 | +0.190 | +0.003 | +0.211 | +0.248 |
+| 3 | +0.123 | +0.212 | +0.222 | +0.239 | +0.304 | +0.323 |
+| 16 separate fits | +0.211 | | | +0.392 | | |
+
+**Found:**
+- HOSVD loses badly at low rank even with about 10,800 samples per bin. At rank 2 it keeps almost none of the gain.
+- The metric does most of the work. Metric SVD reaches 94 to 95 % of the joint gain at ranks 2 and 3 (85 % at rank 2,
+  evoked removed); the alternating solves add 0.01 to 0.04 at those ranks.
+- The joint fit has the lowest training loss in every row, as its objective requires. HOSVD sits 0.17 to 0.21 nats/sample above
+  it at rank 2, about the same as its held-out shortfall.
+- The weights differ too. Rank 2, cosine of the largest principal angle between the HOSVD and joint weight spans: 0.50
+  evoked left in, 0.89 removed. So HOSVD gives a different time course across the trial, not only a worse score.
+- No rank can be read off the singular values, as Baranyi does from exact zeros. Frobenius, evoked left in:
+  1, 0.018, 0.011, 0.010, 0.008, ...; evoked removed: 1, 0.111, 0.067, 0.053, 0.043, ...
+
+**Separate fits:** with this much data they don't overfit. They match rank 3 with evoked left in, and beat it by 0.07 with
+evoked removed, at 18,432 numbers against about 3,500.
+
+**Limits:** one day. The per-bin fits use a fixed Sigma, so this compares the low-rank step alone, not the older row-wise
+two-stage learner of script 11.
+
