@@ -33,7 +33,7 @@ EMU = 914400
 
 SYMBOLS = {
     "Delta": "Δ", "alpha": "α", "lambda": "λ", "phi": "φ", "Phi": "Φ", "Theta": "Θ", "Sigma": "Σ", "xi": "ξ", "ell": "ℓ",
-    "otimes": "⊗", "top": "T", "geq": "≥", "in": "∈", "cdots": "⋯", "sum": "Σ", "times": "×",
+    "otimes": "⊗", "top": "T", "geq": "≥", "prec": "≺", "in": "∈", "cdots": "⋯", "sum": "Σ", "times": "×",
     "qquad": "  ", "quad": " ", ",": " ", ";": " ", " ": " ", "|": "‖",
 }
 

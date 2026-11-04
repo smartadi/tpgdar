@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-i · Deck: earlier LMI slides back, as editable text
+commit: bd0b86d+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** At Aditya's request, put back the polytopic control slide with its LMI equations (slide 28) and the table of medians (slide 32), now 32 slides. Wording as in 9d3a0c5, except that "(panels C, F)" is dropped because those panels are gone. Table numbers match RESULTS.md.
+**State:** done; the changed slides exported through desktop PowerPoint and viewed. Not opened in PowerPoint for the web.
+**Resume:** as in L-2026-11-04-g.
+
 ### L-2026-11-04-h · Deck: slide 14 shows the loss as the weighted prediction error
 commit: d13c60d+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** Slide 14 now writes `L_g` as the Sigma-inverse-weighted one-step error instead of its expansion in `H_g` and `h_g`, at Aditya's request. Slide 15 still solves with `H_g` and `h_g`, so it gains one line saying what they are.

@@ -271,6 +271,16 @@ def control_slides(d):
                "Finding F and P is a convex problem (an LMI)",
                "Tested on the true plant, never the fitted model"], 1.45, 5.5, x=x, w=13.333 - x - 0.3, size=17)
 
+    s = d.slide("Polytopic control: one gain, checked at the vertices")
+    y = add_equation(s, r"$u=F\,\xi,\quad \xi(t)=[\,x(t);\ x(t-1)\,],\qquad \xi(t+1)=(\sum_v\,\lambda_v(p)\,A_v+B_cF)\,\xi(t)$", EQ_X, 1.45, size=24)
+    y = add_equation(s, r"$(A_v+B_cF)^{\top}\,P\,(A_v+B_cF)\ \prec\ \alpha^{2}P\qquad \mathrm{at\ every\ vertex}\ v$", EQ_X, y + 0.15, size=24)
+    y = add_equation(s, r"$\mathrm{Solved\ as\ an\ LMI\ in}\ \ Q=P^{-1},\ Y=FQ:\quad (A_vQ+B_cY)^{\top}\,(\alpha Q)^{-1}\,(A_vQ+B_cY)\ \prec\ \alpha Q$", EQ_X, y + 0.15, size=22)
+    d.text(s, ["If it holds at the vertices it holds at every mix of them: every p, and p moving at any speed",
+               "The gain does not need to know p, only the fitted vertices and B",
+               "α sets a guaranteed decay rate. At α = 1 the fitted certificate held on the true plant in 0 of 20 plants, because the "
+               "solution sits on the LMI's boundary. At α = 0.9 it held in 20 of 20, in both cases",
+               "The loop is closed on the true plant, never on the fitted model"], y + 0.3, 3.3, size=18)
+
     figure(d, "Both gains keep the network stable", "nine_control", panel_flags={"As p moves": dict(no_xaxis=True)})
 
     s = d.slide("Consensus: every node reaches the target")
@@ -286,6 +296,24 @@ def control_slides(d):
     d.text(s, ["With an input at every node, pooled LQR stabilises everything too",
                "The fitted vertices can certify either gain",
                "The LMI reaches tighter rates (0.6: 40 of 40 plants, LQR 10 of 40) for less input"], 5.2, 2.0, size=20)
+
+    s = d.slide("Here the vertices matter more than the LMI: the numbers")
+    d.table(s, [["Median over 20 plants", "Stable at all p", "Worst true ρ", "rms x", "rms input"],
+                ["One unstable: open loop", "0 / 20", "1.030", "9.76", "0"],
+                ["Pooled LQR, R = 1", "20 / 20", "0.534", "0.311", "0.126"],
+                ["Polytopic, α = 0.9", "20 / 20", "0.501", "0.307", "0.171"],
+                ["Two unstable: open loop", "0 / 20", "1.030", "14.2", "0"],
+                ["Pooled LQR, R = 1", "20 / 20", "0.567", "0.314", "0.169"],
+                ["Polytopic, α = 0.9", "20 / 20", "0.506", "0.308", "0.184"]],
+            1.35, [4.3, 1.9, 1.9, 1.3, 1.5], row_h=0.36, size=14)
+    d.text(s, ["Pooled LQR stabilises every plant too: with an input at every node the gain can nearly cancel the mean operator",
+               "With the LMI set to minimise the gain, the same worst-case ρ takes less input: 15 to 35% less with two "
+               "unstable ends; with one, even down to ρ = 0.8 and 10 to 17% less below that",
+               "Noise suppression, rms x per unit of input, is about even",
+               "The fitted vertices can certify either gain: pooled LQR passes at rates 0.9 and 0.8 (19 or 20 of 20 on the true plant). "
+               "A rate-0.6 certificate exists for it in only 10 and 0 of 20; the LMI reaches 0.6 in all 40",
+               "Synthetic, linear, full state, no delay or actuator limits. A few inputs on real data is the real test"],
+           3.95, 3.4, size=16)
 
 
 def build():
