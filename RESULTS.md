@@ -399,8 +399,8 @@ contains the trajectory, so they need not be visited by the data.
 **Limits:** vertices are one choice of coordinates for the fitted family; only the family is
 unique. Edge maps sum over lags and hide lag structure. Evoked-left-in rank-3 vertex 2 is 1.01
 of the trajectory spread from any bin, so its strong coupling is an extrapolation. With evoked
-removed, plan 1/4 is an abrupt outlier at target onset (it becomes a rank-3 vertex), not explained
-yet. One session; channel map not confirmed with Noah.
+removed, plan 1/4 is an abrupt outlier at target onset (it becomes a rank-3 vertex); the step check
+at the end of this file accounts for most of it. One session; channel map not confirmed with Noah.
 
 Figures: `figures/13_vertices_{felix,induced}_r{2,3}.png`.
 
@@ -508,3 +508,30 @@ input at every node: M inputs can hold only M nodes.
 LMI feasible and certificate held on the true plant in 20/20 for both cases. Error and spread are medians over
 held windows, set by the noise: both gains reach the target about equally. The polytopic gain has the better
 worst rho; it doesn't track better here. Movie: `figures/17_consensus.mp4` (git-ignored; `--movie`, then `--mp4`).
+
+## Step in `noart` at target onset: what it changes  (`12c_step_check.py`) — 2026-11-04
+
+`lfp noart` has steps that raw `lfp` doesn't. Median sample-to-sample change at 0->1 ms after target on:
+
+| day | at 0->1 ms | typical | also at (ms) |
+|---|---|---|---|
+| 11-12 | 23.5 uV | 2.5 | 10->11, 900->901, 910->911 |
+| 08-23 | 29.0 uV | 3.4 | 10->11, 900->901, 910->911 |
+
+Neither day has stimulation, so the light can't be the direct cause. Where in the cleaning it comes from isn't known.
+
+Masking on 11-12, 5-fold: targets whose sample or K lags touch -3 to 15 ms or 897 to 915 ms are dropped, 44 of 667
+points on the time axis. Plan 1/4 drops to 4,167 samples, against about 10,800 in other bins.
+
+| evoked | | rank 2 gain | rank 3 gain | rank 2 gain in plan 1/4 | rank-3 weights at plan 1/4 |
+|---|---|---|---|---|---|
+| left in | as reported | +0.190 | +0.222 | +0.014 | 0.5, 0.4, 0.1 |
+| left in | masked | +0.196 | +0.225 | +0.110 | 0.6, 0.4, 0.0 |
+| removed | as reported | +0.248 | +0.323 | +0.105 | 0.0, 1.0, 0.0 |
+| removed | masked | +0.259 | +0.320 | +0.225 | 0.66, 0.0, 0.34 |
+
+**Found:** the day-level gains hold. The rank-3 evoked-removed vertex that sat on plan 1/4 is mostly this step: masked,
+that bin is no longer a vertex. Vertex labels aren't comparable between fits, so compare the pattern, not the columns.
+
+**Limits:** 11-12 only. Scripts 12 and 13, and script 14 on 08-23, still run unmasked, and their vertex maps weren't
+refit with the mask. A zero-phase decimation filter may spread a step past the mask, so some may remain.

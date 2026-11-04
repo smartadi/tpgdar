@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-j · Step in lfp noart at target onset: gains hold, the plan 1/4 vertex was mostly the step
+commit: b54c7d9+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** `lfp noart` has a step at 0->1 ms after target on (23.5 uV vs 2.5 typical on 11-12, 29.0 vs 3.4 on 08-23), and smaller ones at 10, 900 and 910 ms, on these no-stim days; raw `lfp` has none. Masking on 11-12 moves held-out gains little (rank 2 +0.190 to +0.196 evoked left in, +0.248 to +0.259 removed; rank 3 +0.222 to +0.225, +0.323 to +0.320). With evoked removed, plan 1/4 stops being a rank-3 vertex (weights 0, 1, 0 become 0.66, 0, 0.34), which accounts for most of the outlier left unexplained in L-2026-11-04-a. Table in RESULTS.md.
+**State:** check only, 11-12 only. Scripts 12, 13 and 14 (08-23) still run unmasked; vertex maps not refit. `scripts/12c_step_check.py` is the scratch script with its root path made relative, not rerun after that one edit. Where the step comes from isn't known. The IOS slide's traces come from `noart` through `s12.load()`.
+**Resume:** ask Noah about the step; decide whether to mask in scripts 12 to 14 and rerun.
+
 ### L-2026-11-04-i · Deck: earlier LMI slides back, as editable text
 commit: bd0b86d+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** At Aditya's request, put back the polytopic control slide with its LMI equations (slide 28) and the table of medians (slide 32), now 32 slides. Wording as in 9d3a0c5, except that "(panels C, F)" is dropped because those panels are gone. Table numbers match RESULTS.md.
