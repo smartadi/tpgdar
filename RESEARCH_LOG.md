@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-n · Method gate: first real approval, and the fix it held back
+commit: 898372b+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** Aditya approved the block for the one-line fix in `why_gated`, and the same edit the gate had refused then went through, so both the refusal and the opening have now run in the real harness. Only write tools are now checked by file path, and the expected-failure mark is gone.
+**State:** done. `tests/test_method_gate.py`: 50 pass. Closing on Aditya's next message is covered by the tests, not yet seen in use.
+**Resume:** `.venv\Scripts\python -m pytest tests/test_method_gate.py`.
+
 ### L-2026-11-04-m · Method gate: fitting and scoring edits wait for Aditya's approval
 commit: 33219c2+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** Aditya asked for a hook after I picked the joint fit on my own. `.claude/hooks/method_gate.py` is a PreToolUse hook that refuses edits to `gdar_tp/` (except `io.py`, `viz.py`, `__init__.py`), edits to `scripts/*.py` that change a fitting or scoring term, shell commands that visibly write to those, and edits to the gate. It reads the session transcript and opens only when a complete explanation block is followed by a plain approval from Aditya; their next message closes it. `tests/test_method_gate.py`: 49 pass, 1 expected failure. The hook fired through the real harness on my next edit, which was to the gate itself, under auto mode.

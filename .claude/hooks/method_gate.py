@@ -116,6 +116,8 @@ def why_gated(tool, tool_input, root=ROOT):
         if any(rule.search(command) for rule in SHELL_WRITES):
             return "this shell command writes to fitting or scoring code, or to the gate"
         return None
+    if tool not in ("Write", "Edit", "MultiEdit", "NotebookEdit"):
+        return None
     rel = project_path(tool_input.get("file_path") or tool_input.get("notebook_path"), root)
     if rel is None:
         return None

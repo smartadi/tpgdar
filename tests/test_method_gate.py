@@ -105,8 +105,7 @@ def test_gate_opens_only_on_plain_approval_of_a_full_block(tmp_path, entries, op
     ("Bash", {"command": ".venv/Scripts/python scripts/12d_hosvd_vs_joint.py | tee cache/12d.log"}, False),
     ("Bash", {"command": "git add gdar_tp/sym_tp.py scripts/12.py && git commit -m x"}, False),
     ("Bash", {"command": "grep -n fit_sym_tp gdar_tp/sym_tp.py; cat scripts/12.py"}, False),
-    # The settings matcher never sends Read to the hook, so this has no effect in use.  The one-line fix waits for approval.
-    pytest.param("Read", {"file_path": CORE}, False, marks=pytest.mark.xfail(strict=True, reason="script gates any tool with a file_path")),
+    ("Read", {"file_path": CORE}, False),
 ])
 def test_what_is_caught(tmp_path, tool, tool_input, caught):
     assert (run_hook(tmp_path, [user("hello")], tool, tool_input) is not None) is caught
