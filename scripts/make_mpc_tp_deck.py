@@ -193,14 +193,15 @@ def training_slides(d):
     d.text(s, "Same estimator as Felix's fit_gdar: matches to 1e-11.", y + 1.8, 0.5, size=22, bullet=False)
 
     s = d.slide("Training 2: the objective is the data loss")
-    y = add_equation(s, r"$L_g(\phi)=\phi^{\top}H_g\,\phi-2\,\phi^{\top}h_g,\qquad H_g=R^{\top}(G_g\otimes\Sigma^{-1})R$", EQ_X, 1.6, size=28)
+    y = add_equation(s, r"$L_g(\phi)=\sum_{t\in g}\|\,x(t+1)-\Theta(\phi)\,z(t)\,\|_{Σ⁻¹}^{2}$", EQ_X, 1.6, size=28)
     y = add_equation(s, r"$J(W,\Phi)=\sum_{g=1}^{P}L_g(\sum_{j=1}^{r}W_{gj}\,\phi_j)$", EQ_X, y + 0.3, size=28)
     d.text(s, "Directions the data excite count more.", y + 0.4, 0.5, size=22, bullet=False)
 
     s = d.slide("Training 3: alternate two exact solves")
     y = add_equation(s, r"$\mathrm{W\ step:}\quad(\Phi\,H_g\,\Phi^{\top})\,w_g=\Phi\,h_g$", EQ_X, 1.6, size=28)
     y = add_equation(s, r"$\Phi\ \mathrm{step:}\quad(\sum_g w_g w_g^{\top}\otimes H_g)\,\mathrm{vec}\,\Phi=\sum_g w_g\otimes h_g$", EQ_X, y + 0.3, size=28)
-    d.text(s, "J never increases. Real fits took 5 to 7 sweeps.", y + 0.4, 0.5, size=22, bullet=False)
+    y = add_equation(s, r"$H_g,\ h_g\mathrm{:\ the\ quadratic\ and\ linear\ terms\ of\ }L_g\mathrm{\ in\ }\phi$", EQ_X, y + 0.4, size=20)
+    d.text(s, "J never increases. Real fits took 5 to 7 sweeps.", y + 0.2, 0.5, size=22, bullet=False)
 
 
 def hosvd_slide(d):
