@@ -2,6 +2,24 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-e · Deck with the MPC replay, TP-GDAR, other days and the 9-node control example
+commit: L-2026-11-04-d+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** Added `scripts/make_mpc_tp_deck.py` and `GDAR-TP_MPC_and_TP-GDAR.pptx` (30 slides). Part 1: MPC replay from the NC draft (`Closedloop_nc/results.tex`, 5a955c7), every number on those slides matched against that text; panel m of Figure 6 left out because `brain_paper/TASKS.md` flags it. Part 2: TP-GDAR model, training, HOSVD vs joint fit, vertices, result figures, other days. Part 3: the 9-node example. Refactored `scripts/make_tp_math_deck.py` into slide functions so both decks share them, and rebuilt `GDAR-TP_model_training.pptx` for the wording and limitations changes.
+**State:** done. Exported through PowerPoint and new slides checked by eye. The pptx skill's schema validator can't load its schemas on this PC, so no schema check ran. The MPC slides use the locked numbers of 2026-10-16; the 2026-10-10 audit (0.78x, 0.65x at lag 0) predates them and wasn't re-checked. "About 40% / 80%" are ratios of medians (0.61, 0.19); the per-trial median ratios are 0.68, 0.22, and the slide says which.
+**Resume:** edit the script and re-run `.venv\Scripts\python scripts/make_mpc_tp_deck.py`; it needs `figures/12_*`, `13_*`, `14_days_comparison.png`, `15_*` and `pdftoppm` for Figure 6.
+
+### L-2026-11-04-d · 9-node control example: learning works, and the certificate comes from the vertices
+commit: L-2026-11-04-c+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:**
+- Added an input at each node to symmetric TP-GDAR (`symmetric_basis(..., node_inputs=True)`), a decay rate and a min-gain objective to the LMI (`synthesize_quadratic_feedback(decay=, min_gain=)`), and `scripts/15_nine_node_control.py`: sparse 3 x 3 graph, K = 2, 20 plants, two designed cases (one or two unstable ends; the second added after seeing the first), loop closed on the true plant only.
+- Rank 2 recovers the truth: operator error 0.004 against 0.177 and 0.305 pooled, input gains within 0.003. LMI feasible 20/20. Certificate holds on the true plant at alpha 0.9 in 20/20, at alpha 1 in 0/20 (the solution sits on the LMI boundary).
+- Pooled LQR also stabilises every plant at every setting, since an input at every node makes this easy. For the same worst-case rho the polytopic gain saves some input (15 to 35 % with two unstable ends; even down to rho 0.8 and 10 to 17 % below that with one). rms x per unit of input is about even.
+- The fitted vertices certify the LQR gain too: rate 0.9 and 0.8 hold on the true plant in 19 or 20 of 20. A rate-0.6 certificate exists for it in only 10/20 and 0/20, whereas the LMI reaches 0.6 in all 40. So the certificate comes from TP-GDAR's vertices, and the LMI adds a little on top.
+- Learner bug found: with two unstable ends (energy 10^4 times the rest) the pooled start of `fit_sym_tp` stalled at rank-2 error 0.21, and the certificate then held in 2/20. Added `starts=("pooled", "svd")`, default unchanged: error 0.004 on 20/20. On H 2021-11-12 a strict stop and the svd start move the held-out gains by at most 0.0001, so scripts 12 to 14 stand; the other days were not re-checked. 50 tests pass.
+
+**State:** done. Numbers in `RESULTS.md`, figures `figures/15_*`, cache `cache/15_nine_node.pkl`, log `cache/15_run.log` (git-ignored). Synthetic, linear, full state, no delay or actuator limits, one input per node, slow p schedule: says nothing about cortex.
+**Resume:** the case that could separate the controllers is few inputs, as with real stimulation. `.venv\Scripts\python scripts/15_nine_node_control.py [--plot | --lqr-cert]` (full run about 10 min, `--lqr-cert` about 30).
+
 ### L-2026-11-04-c · TP-GDAR on other IOS Reach days: the timing repeats, the edge maps mostly don't
 commit: 5fef213+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:**

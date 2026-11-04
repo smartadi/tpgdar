@@ -431,3 +431,60 @@ partly by construction; the timing is the part that is informative. Some 11-11 r
 corners have spectral radius above 1 (1.002, 1.026). Channel map not confirmed with Noah.
 
 Figures: `figures/14_days_comparison.png`, `figures/14_vertices_{08-23_no_stim,11-11_no_light,11-11_light}_{felix,induced}_r2.png`.
+
+## Worked control example: 9 nodes, an input at each node  (`15_nine_node_control.py`) — 2026-11-04
+
+Synthetic, known truth. 3 x 3 grid (12 edges), K = 2, symmetric operators plus one input gain per node
+(51 numbers per operator; `symmetric_basis(..., node_inputs=True)`), Theta(p) = (1-p) Theta_0 + p Theta_1.
+Learned from 30 trials of 200 samples at each of 7 values of p, random input at every node. 20 plants per
+case. One unstable: spectral radius 0.90 at p = 0, 1.03 at p = 1. Two unstable: 1.03 at both, added after
+seeing the first case as a stress test. Instability is by design, so this says nothing about cortex.
+
+| median over 20 plants | one unstable | two unstable |
+|---|---|---|
+| operator error: pooled / rank 1 / rank 2 / rank 3 | 0.177 / 0.169 / 0.004 / 0.005 | 0.305 / 0.281 / 0.004 / 0.005 |
+| gain at unseen p over pooled, rank 2 (positive in 20/20) | +1.883 | +4.258 |
+| input gains: worst error / spread between vertices | 0.003 / 0.010 | 0.003 / 0.010 |
+| LMI feasible on the fitted vertices | 20/20 | 20/20 |
+| fitted certificate holds on the true plant: alpha = 0.9 / alpha = 1 | 20/20, 0/20 | 20/20, 0/20 |
+
+| closed loop on the true plant, median | stable at all p | worst true rho | rms x | rms input |
+|---|---|---|---|---|
+| one unstable: open loop | 0/20 | 1.030 | 9.76 | 0 |
+| pooled LQR, R = 1 | 20/20 | 0.534 | 0.311 | 0.126 |
+| polytopic, alpha = 0.9, min trace | 20/20 | 0.501 | 0.307 | 0.171 |
+| two unstable: open loop | 0/20 | 1.030 | 14.2 | 0 |
+| pooled LQR, R = 1 | 20/20 | 0.567 | 0.314 | 0.169 |
+| polytopic, alpha = 0.9, min trace | 20/20 | 0.506 | 0.308 | 0.184 |
+
+- **Learning works.** Rank 2 reaches the truth; a single model cannot, and rank 3 adds nothing.
+- **Pooled LQR also stabilises every plant, at every setting tried, in both cases.** With an input at every
+  node the gain can nearly cancel the mean operator, so this example does not need a polytopic controller
+  for stability. The pooled model's own spectral radius is above 1 in all 40 plants, so it sees the
+  instability.
+- **Effort.** With the LMI set to minimise the gain, the same worst-case rho takes less input: 15 to 35 %
+  less with two unstable ends; with one, even down to rho = 0.8 and 10 to 17 % less below that. Comparing
+  rms x per unit of input, the two are about even. The polytopic worst rho lands on the design alpha.
+- **Margin matters.** At alpha = 1 the solution sits on the LMI boundary and the fitted certificate never
+  survives on the true plant. At alpha = 0.9 it always does.
+- **The certificate comes from the fitted vertices, not from the LMI.** Testing the pooled LQR gain (R = 1) on
+  the fitted vertices the same way, then on the true plant at rate 1: certified at rate 0.9 in 20/20 and 19/20,
+  and at 0.8 in 20/20 and 19/20 (one unstable, two unstable). A rate-0.6 certificate exists on the fitted
+  vertices in only 10/20 and 0/20, whereas the LMI reaches alpha = 0.6 in all 40 (`--lqr-cert`, slow).
+- **So on this example** TP-GDAR's vertices are what matter. They let any fixed gain be certified across p. The
+  LMI on top reaches a chosen rate directly and saves some input for it; it does not stabilise anything LQR can't.
+
+**A learner bug this exposed.** With two unstable ends, the data at those ends hold about 10^4 times the
+energy of the rest. `fit_sym_tp` from its original (pooled) start stalled at rank-2 error 0.21 even though the
+truth is rank 2, and the certificate then held in only 2 of 20 plants. A strict stopping rule did not fully cure
+it: 2 of 6 plants tested stayed worse than the truth's own objective. Added `starts=("pooled", "svd")`: the
+unweighted SVD of the per-condition fits as a second start, lowest objective wins. Error 0.004 on 20/20.
+**The real-data numbers don't change:** on H 2021-11-12 (16 bins, K = 16, rank 2 and 3, evoked in and removed)
+a strict stop and the svd start move the held-out gain by at most 0.0001. Scripts 12 to 14 keep the default
+start. The other days were not re-checked.
+
+**Limits:** designed plants, linear, full state, no delay or actuator limits, one input per node. Real
+stimulation has few sites and a nonlinear plant. The closed-loop traces use a slow schedule of p; arbitrarily
+fast p is covered by the certificate only, not simulated.
+
+Figures: `figures/15_nine_node_learning.png`, `figures/15_nine_node_control.png`. Log: `cache/15_run.log`.

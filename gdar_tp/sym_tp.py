@@ -27,10 +27,13 @@ from .tp import _barycentric
 from .tpgdar import resid_cov_sum
 
 
-def symmetric_basis(adjacency, K):
+def symmetric_basis(adjacency, K, node_inputs=False):
     """Sparse R with ``vec(Theta) = R phi`` (column-major, Theta is N x KN).
 
     ``phi`` holds, per lag, the N self terms and then one coefficient per edge i < j.
+    With ``node_inputs`` each node also has its own input, ``x_i(t+1) += b_i u_i(t)``:
+    Theta gains N columns (a diagonal B, not symmetric-constrained further) and phi gains
+    the N numbers b_i at the end.
     """
     A = np.asarray(adjacency, dtype=bool)
     N = A.shape[0]
@@ -47,8 +50,15 @@ def symmetric_basis(adjacency, K):
         cols.append(c0 + N + np.arange(E))
         rows.append(off + iu * N + ju)  # entry (j, i)
         cols.append(c0 + N + np.arange(E))
+    n_phi = K * n_lag
+    D = K * N
+    if node_inputs:
+        rows.append((K * N + np.arange(N)) * N + np.arange(N))
+        cols.append(n_phi + np.arange(N))
+        n_phi += N
+        D += N
     rows, cols = np.concatenate(rows), np.concatenate(cols)
-    return sp.csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(N * N * K, K * n_lag))
+    return sp.csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(N * D, n_phi))
 
 
 def theta_of(phi, R, N):
@@ -181,8 +191,17 @@ def _enclosing_triangle(Y2):
     return best
 
 
-def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10):
-    """Joint GLS fit of a rank-``r`` TP-GDAR on per-condition ``stats`` (see stack_stats)."""
+def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10, starts=("pooled",)):
+    """Joint GLS fit of a rank-``r`` TP-GDAR on per-condition ``stats`` (see stack_stats).
+
+    ``starts`` lists the initialisations to run; the lowest final objective wins.
+      pooled  the pooled operator plus the leading per-condition deviations in the pooled metric
+      svd     the leading singular vectors of the per-condition fits, unweighted
+
+    ``pooled`` can stall when a few conditions hold nearly all the energy (a condition with an
+    unstable mode, say): the pooled metric is then set by those few directions.  ``tol`` is
+    relative to the whole objective, so such a fit can also stop early; lower it for those data.
+    """
     P = len(stats["n"])
     N = stats["Syy"].shape[1]
     Sinv = np.linalg.pinv(Sigma)
@@ -191,38 +210,51 @@ def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10):
     hs = np.stack([q[1] for q in quads])
     n_phi = hs.shape[1]
 
-    # Start: pooled operator with constant weight, then the leading per-condition
-    # deviations from it in the pooled metric, so rank r starts at the pooled model.
-    Hbar, hbar = Hs.sum(0), hs.sum(0)
-    phi0 = _solve(Hbar, hbar, jitter)
-    phi = np.zeros((r, n_phi))
-    phi[0] = phi0
-    if r > 1:
-        L = np.linalg.cholesky(Hbar + jitter * np.trace(Hbar) / n_phi * np.eye(n_phi))
-        dev = np.stack([_solve(Hs[g], hs[g], jitter) - phi0 for g in range(P)])
-        _, _, Vt = np.linalg.svd(dev @ L, full_matrices=False)
-        phi[1:] = np.linalg.solve(L.T, Vt[:r - 1].T).T
-    W = np.zeros((P, r))
-    W[:, 0] = 1.0
-
-    def objective():
+    def objective(W, phi):
         return sum((W[g] @ phi) @ Hs[g] @ (W[g] @ phi) - 2 * (W[g] @ phi) @ hs[g] for g in range(P))
 
-    obj = [objective()]
-    for _ in range(n_iter):
-        for g in range(P):                                  # W-step
-            Hw = phi @ Hs[g] @ phi.T
-            W[g] = np.linalg.lstsq(Hw, phi @ hs[g], rcond=1e-12)[0]
-        A = np.zeros((r * n_phi, r * n_phi))                # phi-step
-        b = np.zeros(r * n_phi)
-        for g in range(P):
-            A += np.kron(np.outer(W[g], W[g]), Hs[g])
-            b += np.kron(W[g], hs[g])
-        phi = _solve(A, b, jitter).reshape(r, n_phi)
-        # gauge: unit weight columns, leading (largest) operator first
-        scale = np.linalg.norm(W, axis=0) / np.sqrt(P)
-        W, phi = W / scale, phi * scale[:, None]
-        obj.append(objective())
-        if abs(obj[-2] - obj[-1]) <= tol * abs(obj[-1]):
-            break
-    return SymTP(W=W, phi=phi, R=R, N=N, p_grid=np.asarray(p_grid, float), objective=np.array(obj))
+    def start_pooled():
+        # rank r starts at the pooled model, with constant weight
+        Hbar, hbar = Hs.sum(0), hs.sum(0)
+        phi0 = _solve(Hbar, hbar, jitter)
+        phi = np.zeros((r, n_phi))
+        phi[0] = phi0
+        if r > 1:
+            L = np.linalg.cholesky(Hbar + jitter * np.trace(Hbar) / n_phi * np.eye(n_phi))
+            dev = np.stack([_solve(Hs[g], hs[g], jitter) - phi0 for g in range(P)])
+            _, _, Vt = np.linalg.svd(dev @ L, full_matrices=False)
+            phi[1:] = np.linalg.solve(L.T, Vt[:r - 1].T).T
+        W = np.zeros((P, r))
+        W[:, 0] = 1.0
+        return W, phi
+
+    def start_svd():
+        fits = np.stack([_solve(Hs[g], hs[g], jitter) for g in range(P)])
+        _, S, Vt = np.linalg.svd(fits, full_matrices=False)
+        phi = S[:r, None] * Vt[:r]
+        return np.stack([np.linalg.lstsq(phi @ Hs[g] @ phi.T, phi @ hs[g], rcond=1e-12)[0] for g in range(P)]), phi
+
+    def alternate(W, phi):
+        obj = [objective(W, phi)]
+        for _ in range(n_iter):
+            for g in range(P):                              # W-step
+                Hw = phi @ Hs[g] @ phi.T
+                W[g] = np.linalg.lstsq(Hw, phi @ hs[g], rcond=1e-12)[0]
+            A = np.zeros((r * n_phi, r * n_phi))            # phi-step
+            b = np.zeros(r * n_phi)
+            for g in range(P):
+                A += np.kron(np.outer(W[g], W[g]), Hs[g])
+                b += np.kron(W[g], hs[g])
+            phi = _solve(A, b, jitter).reshape(r, n_phi)
+            # gauge: unit weight columns, leading (largest) operator first
+            scale = np.linalg.norm(W, axis=0) / np.sqrt(P)
+            W, phi = W / scale, phi * scale[:, None]
+            obj.append(objective(W, phi))
+            if abs(obj[-2] - obj[-1]) <= tol * abs(obj[-1]):
+                break
+        return W, phi, np.array(obj)
+
+    makers = {"pooled": start_pooled, "svd": start_svd}
+    runs = [alternate(*makers[s]()) for s in starts]
+    W, phi, obj = min(runs, key=lambda run: run[2][-1])
+    return SymTP(W=W, phi=phi, R=R, N=N, p_grid=np.asarray(p_grid, float), objective=obj)

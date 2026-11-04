@@ -76,7 +76,7 @@ class SynthesisResult:
 
 
 def synthesize_quadratic_feedback(vertex_A, B, margin=1e-6, solver=None,
-                                   normalize=True):
+                                   normalize=True, decay=1.0, min_gain=False):
     """Quadratic-stability state feedback over the polytope.
 
     Parameters
@@ -85,6 +85,11 @@ def synthesize_quadratic_feedback(vertex_A, B, margin=1e-6, solver=None,
         (lags in the last axis) or a list ``[A_0, ..., A_{K-1}]``.
     B : (N, M) input matrix (shared across vertices).
     margin : float, LMI strict-positivity margin.
+    decay : float <= 1, guaranteed rate: ``A_cl' P A_cl < decay^2 P`` at every vertex.
+        At 1 the minimum-trace solution sits on the LMI boundary, so its certificate
+        does not survive any model error; below 1 it leaves room.
+    min_gain : bool, minimise a bound on ``||Y||`` (with ``Q >= I``, a bound on the
+        gain) instead of ``trace(Q)``.
 
     Returns
     -------
@@ -100,11 +105,18 @@ def synthesize_quadratic_feedback(vertex_A, B, margin=1e-6, solver=None,
     Y = cp.Variable((m, nx))
     cons = [Q >> (1.0 if normalize else margin) * np.eye(nx)]
     for Ac in comp:
-        top = cp.hstack([Q, (Ac @ Q + Bc @ Y).T])
-        bot = cp.hstack([Ac @ Q + Bc @ Y, Q])
+        top = cp.hstack([decay * Q, (Ac @ Q + Bc @ Y).T])
+        bot = cp.hstack([Ac @ Q + Bc @ Y, decay * Q])
         lmi = cp.vstack([top, bot])
         cons.append(lmi >> margin * np.eye(2 * nx))
-    prob = cp.Problem(cp.Minimize(cp.trace(Q)), cons)
+    if min_gain:
+        t = cp.Variable()
+        cons.append(cp.vstack([cp.hstack([t * np.eye(m), Y]), cp.hstack([Y.T, np.eye(nx)])]) >> 0)
+        cons.append(Q << 100 * np.eye(nx))
+        objective = cp.Minimize(t)
+    else:
+        objective = cp.Minimize(cp.trace(Q))
+    prob = cp.Problem(objective, cons)
     _solve(prob, solver)
 
     return _finish(prob, Q, Y, comp, Bc, "quadratic")
