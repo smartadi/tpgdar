@@ -31,9 +31,9 @@ def symmetric_basis(adjacency, K, node_inputs=False):
     """Sparse R with ``vec(Theta) = R phi`` (column-major, Theta is N x KN).
 
     ``phi`` holds, per lag, the N self terms and then one coefficient per edge i < j.
-    With ``node_inputs`` each node also has its own input, ``x_i(t+1) += b_i u_i(t)``:
-    Theta gains N columns (a diagonal B, not symmetric-constrained further) and phi gains
-    the N numbers b_i at the end.
+    With ``node_inputs`` each listed node also has its own input, ``x_i(t+1) += b_i u_m(t)``
+    (``True`` lists every node): Theta gains one column per input and phi gains one number
+    per input at the end.  B is then diagonal for every node, or one entry per column.
     """
     A = np.asarray(adjacency, dtype=bool)
     N = A.shape[0]
@@ -52,11 +52,12 @@ def symmetric_basis(adjacency, K, node_inputs=False):
         cols.append(c0 + N + np.arange(E))
     n_phi = K * n_lag
     D = K * N
-    if node_inputs:
-        rows.append((K * N + np.arange(N)) * N + np.arange(N))
-        cols.append(n_phi + np.arange(N))
-        n_phi += N
-        D += N
+    nodes = np.arange(N) if node_inputs is True else np.asarray([] if node_inputs is False else node_inputs, dtype=int)
+    if len(nodes):
+        rows.append((K * N + np.arange(len(nodes))) * N + nodes)
+        cols.append(n_phi + np.arange(len(nodes)))
+        n_phi += len(nodes)
+        D += len(nodes)
     rows, cols = np.concatenate(rows), np.concatenate(cols)
     return sp.csr_matrix((np.ones(len(rows)), (rows, cols)), shape=(N * D, n_phi))
 

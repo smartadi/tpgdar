@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-f · Inputs at chosen nodes, for the few-input control example
+commit: 75f5d2b+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** `symmetric_basis(..., node_inputs=[...])` now takes a list of input nodes as well as True; one test added. The functions in `scripts/15_nine_node_control.py` work for any number of inputs; results at 9 inputs are unchanged by construction, and the lag operators of a plant don't depend on the input nodes, so plants are nested across input counts.
+**State:** code only; `tests/test_sym_tp.py` passes. No results recorded yet.
+**Resume:** the few-input example, `scripts/16_nine_node_few_inputs.py`.
+
 ### L-2026-11-04-e · Deck with the MPC replay, TP-GDAR, other days and the 9-node control example
 commit: ef89a4a+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** Added `scripts/make_mpc_tp_deck.py` and `GDAR-TP_MPC_and_TP-GDAR.pptx` (30 slides). Part 1: MPC replay from the NC draft (`Closedloop_nc/results.tex`, 5a955c7), every number on those slides matched against that text; panel m of Figure 6 left out because `brain_paper/TASKS.md` flags it. Part 2: TP-GDAR model, training, HOSVD vs joint fit, vertices, result figures, other days. Part 3: the 9-node example. Refactored `scripts/make_tp_math_deck.py` into slide functions so both decks share them, and rebuilt `GDAR-TP_model_training.pptx` for the wording and limitations changes.

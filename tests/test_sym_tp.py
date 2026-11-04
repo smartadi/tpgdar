@@ -55,6 +55,17 @@ def test_node_inputs_add_a_diagonal_b():
         assert np.allclose(block, block.T)
 
 
+def test_inputs_at_chosen_nodes():
+    A = np.asarray(grid_graph(3, 3).adjacency, bool)
+    R = symmetric_basis(A, 2, node_inputs=[0, 4])
+    assert R.shape == (9 * (2 * 9 + 2), 2 * (9 + A.sum() // 2) + 2)
+    th = theta_of(np.random.default_rng(3).standard_normal(R.shape[1]), R, 9)
+    B = th[:, 18:]
+    assert B.shape == (9, 2) and B[0, 0] != 0 and B[4, 1] != 0
+    assert np.count_nonzero(B) == 2
+    assert R.shape == symmetric_basis(A, 2, node_inputs=np.array([0, 4])).shape
+
+
 def test_objective_never_increases_and_recovers_rank_2():
     stats, R, N, K, grid, truth, _ = _setup()
     phi, Sig = fit_gls_pooled(stats["Gzz"].sum(0), stats["Gzy"].sum(0), stats["Syy"].sum(0),

@@ -40,7 +40,8 @@ from gdar_tp.graph import grid_graph  # noqa: E402
 from gdar_tp.sym_tp import _quad, fit_gls_pooled, fit_sym_tp, polytope_vertices, symmetric_basis, theta_of  # noqa: E402
 from gdar_tp.tpgdar import resid_cov_sum, stack_stats, trial_stats  # noqa: E402
 
-K, N = 2, 9
+K, N, E = 2, 9, 12
+N_LAG = K * (N + E)     # numbers in phi before the input gains
 P_GRID = np.linspace(0, 1, 7)
 P_DENSE = np.linspace(0, 1, 41)
 N_TRIALS, T_TRIAL, NOISE, U_STD = 30, 200, 0.3, 1.0
@@ -59,7 +60,7 @@ def rho(th):
 
 def scaled(phi, R, target):
     """Scale the lag coefficients so the operator has spectral radius ``target``."""
-    n_lag = K * (R.shape[1] - N) // K
+    n_lag = N_LAG
     lo, hi = 0.0, 5.0
     for _ in range(60):
         s = (lo + hi) / 2
@@ -74,10 +75,10 @@ def scaled(phi, R, target):
     return ph
 
 
-def make_plant(seed, R, A, targets):
+def make_plant(seed, R, A, targets, nodes=None):
+    """``nodes`` keeps the input gains of those nodes only; the lag operators don't depend on it."""
     rng = np.random.default_rng(seed)
-    E = int(A.sum() // 2)
-    n_lag = K * (N + E)
+    n_lag = N_LAG
 
     def draw():
         ph = np.zeros(R.shape[1])
@@ -87,7 +88,7 @@ def make_plant(seed, R, A, targets):
         return ph
     b = rng.uniform(0.5, 1.5, N)
     ph0, ph1 = draw(), draw()
-    ph0[n_lag:] = ph1[n_lag:] = b
+    ph0[n_lag:] = ph1[n_lag:] = b if nodes is None else b[nodes]
     return scaled(ph0, R, targets[0]), scaled(ph1, R, targets[1])
 
 
@@ -96,7 +97,7 @@ def simulate(th, T, rng, U=None, x0=None, noise=NOISE):
     if x0 is not None:
         x[:K] = x0
     if U is None:
-        U = rng.standard_normal((T, N)) * U_STD
+        U = rng.standard_normal((T, th.shape[1] - K * N)) * U_STD
     for t in range(K - 1, T - 1):
         z = np.concatenate([x[t - k] for k in range(K)] + [U[t]])
         x[t + 1] = th @ z + noise * rng.standard_normal(N)
@@ -151,8 +152,9 @@ def comp(th):
 
 def lqr(phi_pool, R, r=1.0):
     Ac, Bc = comp(theta_of(phi_pool, R, N))
-    X = solve_discrete_are(Ac, Bc, np.eye(K * N), r * np.eye(N))
-    return -np.linalg.solve(r * np.eye(N) + Bc.T @ X @ Bc, Bc.T @ X @ Ac)
+    M = Bc.shape[1]
+    X = solve_discrete_are(Ac, Bc, np.eye(K * N), r * np.eye(M))
+    return -np.linalg.solve(r * np.eye(M) + Bc.T @ X @ Bc, Bc.T @ X @ Ac)
 
 
 def design(poly, phi_pool, R, decay=DECAY, min_gain=False):
@@ -206,7 +208,7 @@ def certificate(ph0, ph1, R, F, Q):
 def run_loop(ph0, ph1, R, F, p_t, rng, u_limit=None, stop=1e4):
     """Closed loop on the true plant.  The noise stream is set by ``rng``."""
     T = len(p_t)
-    x, u = np.zeros((T, N)), np.zeros((T, N))
+    x, u = np.zeros((T, N)), np.zeros((T, R.shape[1] - N_LAG))
     e = NOISE * rng.standard_normal((T, N))
     for t in range(K - 1, T - 1):
         xi = np.concatenate([x[t - k] for k in range(K)])
