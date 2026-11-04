@@ -4,9 +4,9 @@ Hydrogen 2021-11-12: 0 lit trials, center-out reach.  What TP-GDAR adds over one
 state-blind operator, tested on held-out trials.
 
 Baseline ("GDAR"): Felix's model and estimator, symmetric VAR on the proximity graph,
-GLS (`gdar_tp.sym_tp`, checked against `CVARModel.fit_gdar` to 1e-11), his 1.5 unit
-graph threshold on his 32ch_mmad positions, his preprocessing (decimate x3, per-trial
-demean), his no-penalty fit.  It is pooled over trials without crossing trial boundaries.
+GLS (`gdar_tp.sym_tp`, checked against `CVARModel.fit_gdar` to 1e-11), Felix's 1.5 unit
+graph threshold on Felix's 32ch_mmad positions, Felix's preprocessing (decimate x3, per-trial
+demean), Felix's no-penalty fit.  It is pooled over trials without crossing trial boundaries.
 
 Scheduling variable p, two grids:
   phase  hold / plan / move / post-touch.  Categorical, so p cannot be interpolated.

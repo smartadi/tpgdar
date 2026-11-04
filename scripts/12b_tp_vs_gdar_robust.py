@@ -8,7 +8,7 @@ r"""Robustness of script 12's result (H 2021-11-12, phase grid, 5-fold CV over t
   4. Metric. The edge-wise fit is row-wise OLS; refit it by nothing else, score it on a
      per-channel (diagonal Sigma) likelihood too, to see why SSE and full-Sigma ell disagree.
 
-Run:  .venvScriptspython scripts/12b_tp_vs_gdar_robust.py
+Run:  .venv\Scripts\python scripts/12b_tp_vs_gdar_robust.py
 """
 
 from __future__ import annotations

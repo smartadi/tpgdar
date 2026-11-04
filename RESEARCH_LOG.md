@@ -2,6 +2,18 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-04-c · TP-GDAR on other IOS Reach days: the timing repeats, the edge maps mostly don't
+commit: 5fef213+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:**
+- Added `scripts/14_tp_vertices_days.py`: script 13's fit on H 2021-08-23 (no stim, 404 trials, 16 channels) and H 2021-11-11 (stim day; 303 unlit and 307 lit trials, 22 channels, fitted separately, artefact windows dropped).
+- Rank 2 held-out gain over GDAR, evoked left in / removed: 08-23 +0.221 / +0.266, 11-11 no light +0.193 / +0.277, 11-11 light +0.242 / +0.400 (11-12: +0.190 / +0.248). Weight time courses overlap closely across days.
+- Move-minus-rest edge correlation with 11-12 is low: 0.15, 0.12, 0.21 with evoked left in; 0.47, 0.15, 0.13 with evoked removed. So timing repeats, edge maps mostly don't.
+- On lit trials the evoked-removed weights jump at light onset. There is no input term, so lit vertices can absorb the light.
+- Small wording fixes: Felix's name instead of a guessed pronoun in script 12 and `RESULTS.md`, and the broken run line in script 12b.
+
+**State:** done for these days. Numbers in `RESULTS.md`, figures `figures/14_*` and cache `cache/14_days.pkl` (git-ignored). Weights run 0 to 1 by the choice of extreme bins, so overlap in range is partly by construction. One monkey; channel map not confirmed with Noah.
+**Resume:** a fit with an input term on the lit trials, to separate the light from the intrinsic change. `.venv\Scripts\python scripts/14_tp_vertices_days.py --plot` redraws from the cache.
+
 ### L-2026-11-04-b · Plain deck on the TP-GDAR model and training, with rendered equations
 commit: 0225898+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:** Added `scripts/make_tp_math_deck.py` and `GDAR-TP_model_training.pptx` (11 slides: Felix's GDAR, TP structure, warped trial phase, training in 3 steps, vertices, evaluation, result, limitations). Equations are images (matplotlib mathtext, LaTeX in the alt text), so they are not editable in PowerPoint. No new analysis.

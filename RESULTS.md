@@ -310,8 +310,8 @@ dominate G, and a small coefficient error along it is expensive.
 ## TP-GDAR vs Felix's GDAR, no input, IOS Reach  (`12_tp_vs_gdar_ios.py`, `12b_tp_vs_gdar_robust.py`) — 2026-11-02
 
 Hydrogen 2021-11-12, a day with no stim: 320 reach trials, 22 channels, 333 Hz, 50 graph
-edges. Felix's positions (`32ch_mmad`, identical to `priming`'s Hydrogen grid) and his
-1.5-unit threshold. The baseline is his model and estimator (symmetric, graph-supported,
+edges. Felix's positions (`32ch_mmad`, identical to `priming`'s Hydrogen grid) and Felix's
+1.5-unit threshold. The baseline is Felix's model and estimator (symmetric, graph-supported,
 GLS), reimplemented on trial-wise Grams in `gdar_tp/sym_tp.py`; on one trial it matches
 `CVARModel.fit_gdar` to a relative difference of 1e-11. TP-GDAR here stays in the same
 symmetric class. Held-out trials, 5-fold, K = 16 (48 ms) chosen by CV of the baseline only.
@@ -403,3 +403,31 @@ removed, plan 1/4 is an abrupt outlier at target onset (it becomes a rank-3 vert
 yet. One session; channel map not confirmed with Noah.
 
 Figures: `figures/13_vertices_{felix,induced}_r{2,3}.png`.
+
+## Does the switch repeat? Other IOS Reach days  (`14_tp_vertices_days.py`) — 2026-11-04
+
+Script 13's fit (K = 16, warped trial phase, 16 bins, 5-fold over trials) on two more Hydrogen days.
+Lit and unlit trials of the stim day are fitted separately. On that day a sample is dropped if it or
+any of its K lags falls in the light artefact windows (-20..60 and 860..960 ms re target), on both
+trial types. Each cell: evoked left in / evoked removed. 11-11 was chosen over 11-16 because it shares
+20 channels with 11-12 (11-16 only 14).
+
+| day | trials, channels | rank 2 | rank 3 | 16 separate fits | move-minus-rest edges, r with 11-12 |
+|---|---|---|---|---|---|
+| 11-12 no stim (reference) | 320, 22 | +0.190 / +0.248 | +0.222 / +0.323 | +0.211 / +0.392 | |
+| 08-23 no stim | 404, 16 | +0.221 / +0.266 | +0.254 / +0.317 | +0.278 / +0.384 | 0.15 / 0.47 (16 edges) |
+| 11-11 no light | 303, 22 | +0.193 / +0.277 | +0.234 / +0.335 | +0.210 / +0.389 | 0.12 / 0.15 (40 edges) |
+| 11-11 light | 307, 22 | +0.242 / +0.400 | +0.287 / +0.496 | +0.292 / +0.610 | 0.21 / 0.13 (40 edges) |
+
+- **The gain and the timing repeat.** Rank 2 gains are similar on every day, and the weight time
+  courses overlap closely, especially with evoked left in.
+- **The edge maps mostly do not repeat.** Move-minus-rest edge correlation with 11-12 is low (0.12 to
+  0.21 with evoked left in); only 08-23 with evoked removed reaches 0.47, on 16 shared edges.
+- **Lit trials differ with evoked removed:** the weights jump at plan 1/4, at light onset. There is no
+  input term here, so lit vertices can absorb the light; they are not intrinsic dynamics.
+
+**Limits:** one monkey. Weights are 0 to 1 by the choice of extreme bins, so the overlap in range is
+partly by construction; the timing is the part that is informative. Some 11-11 rank-3 extrapolated
+corners have spectral radius above 1 (1.002, 1.026). Channel map not confirmed with Noah.
+
+Figures: `figures/14_days_comparison.png`, `figures/14_vertices_{08-23_no_stim,11-11_no_light,11-11_light}_{felix,induced}_r2.png`.
