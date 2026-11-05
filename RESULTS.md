@@ -656,3 +656,33 @@ evoked removed, at 18,432 numbers against about 3,500.
 **Limits:** one day. The per-bin fits use a fixed Sigma, so this compares the low-rank step alone, not the older row-wise
 two-stage learner of script 11.
 
+## Spectrum by trial phase, data and model  (`make_deck_figure_spectra.py`) — 2026-11-05
+
+No-stim days, `noart` at 333 Hz, evoked left in. 200 ms Hann windows every 50 ms, each wholly inside the phase and demeaned; per
+channel the trial-mean power, then dB, then the mean over channels. Resolution about 10 Hz. Change from hold in dB:
+
+| band (Hz) | 11-12 plan | move | post | 08-23 plan | move | post |
+|---|---|---|---|---|---|---|
+| theta 4-8 | +0.36 | -6.09 | -4.76 | +0.25 | -4.69 | -3.48 |
+| alpha 8-13 | -0.75 | -7.93 | -4.99 | -1.50 | -8.23 | -5.47 |
+| beta 13-30 | -1.04 | -5.52 | -1.21 | -1.94 | -7.11 | -3.25 |
+| gamma 30-60 | -0.22 | +0.64 | +0.81 | -0.36 | +0.41 | +1.38 |
+| high gamma 65-115 | +0.95 | +1.24 | +1.26 | +0.94 | +1.82 | +1.56 |
+
+11-12 is 320 trials, 22 channels; 08-23 is 404 trials, 16 channels. Bootstrap 95% over trials is about +-0.3 to 0.5 dB (11-12, move:
+beta -5.84 to -5.23). 23 trials on 11-12 have a move under 200 ms and add nothing to move; 18 add nothing to post.
+
+**Check against the rank-2 fit** (11-12, evoked left in, from cache/13, nothing refit): AR spectrum frozen at each of the 16 bins, averaged in dB
+within a phase, with the same 200 ms window applied in frequency. Data and model are each relative to the mean of their four phases:
+
+| phase | r, 3-100 Hz | beta 13-30 data | model | high gamma 65-115 data | model |
+|---|---|---|---|---|---|
+| hold | +0.96 | +1.94 | +1.62 | -0.86 | -0.61 |
+| plan | +0.81 | +0.90 | +0.51 | +0.09 | -0.15 |
+| move | +0.97 | -3.57 | -1.79 | +0.38 | +0.59 |
+| post | +0.88 | +0.73 | -0.34 | +0.40 | +0.18 |
+
+**Found:** the task's low-frequency drop in movement is in the data on both days, and the fit reproduces its shape but only about half its size in
+move, with the wrong sign for beta in post. High gamma agrees within 0.25 dB. A frozen spectrum isn't the true spectrum of a changing system, and the
+model has no evoked input, so this is a check, not a test. **Limits:** the model check is one day; the target-onset step isn't masked, though raw `lfp`
+differs by under 0.7 dB from 3 to 100 Hz; the dip near 60 Hz looks like a line-noise notch in the preprocessing, not confirmed.
