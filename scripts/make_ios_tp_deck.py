@@ -11,6 +11,7 @@ Figure data: scripts/make_deck_figure_spectra.py, make_deck_figure_ios.py, make_
 Numbers: cache/spectra_run.log (spectra), RESULTS.md, L-2026-11-04-l (HOSVD vs joint).
 Paper: docs/TP_model_transformation_as_a_way_to_LMI-based_controller_design.pdf (Baranyi 2004), Method 3 and 4.
 Felix's GDAR: docs/2024.02.26.582177v1.full.pdf (Schwock et al. 2024).
+Dataset: Griggs, Stanis et al., Nat Commun 2026, 17:3128 (s41467-026-69448-3), and Stanis et al., EMBC 2025 (10.1109/EMBC58623.2025.11254470).
 """
 
 import os
@@ -56,17 +57,61 @@ def flow(d, s, boxes, y, x=LEFT + 0.1, w=2.05, gap=0.37, h=0.95, size=18, shaded
 
 # ----------------------------------------------------------------------------------------------- the task
 
+def setup_slide(d):
+    s = d.slide("The setup: record and shine light through one window")
+    x0, w = LEFT + 1.0, 4.6
+    d.label(s, "LED array: 4 × 4, red light", x0, 1.6, w, 0.85, fill=TINT, size=18)
+    d.label(s, "Air gap and cover glass", x0, 2.45, w, 0.55, size=16)
+    d.label(s, "See-through ECoG: 32 electrodes", x0, 3.0, w, 0.85, fill=TINT, size=18)
+    d.label(s, "Cortex: left PPC, Jaws in part of it", x0, 3.85, w, 1.2, size=18)
+    arrow(s, x0 - 0.3, 1.7, x0 - 0.3, 4.95)
+    d.text(s, "light", 3.05, 0.4, x=LEFT - 0.05, w=0.9, size=16, bullet=False, color=MUTED)
+    arrow(s, x0 + w, 3.42, x0 + w + 0.75, 3.42)
+    d.text(s, "LFP, 1 kHz", 2.95, 0.4, x=x0 + w - 0.02, w=1.3, size=15, bullet=False, color=MUTED)
+    d.text(s, "Not to scale", 5.1, 0.4, x=x0, w=w, size=14, bullet=False, color=MUTED)
+    x = 7.55
+    d.text(s, ["25 mm window over left posterior parietal cortex (PPC), stable for years",
+               "Jaws, an inhibitory opsin, covers 92 mm² in H and 76 mm² in L",
+               "Light: 900 ms from target on, on a random half of stim-day trials",
+               "The window stays clear for 10 to 14 weeks, then tissue is removed"], 1.5, 4.0, x=x, w=13.333 - x - 0.3, size=20)
+    d.text(s, "Griggs, Stanis et al., Nat Commun 2026. Stanis et al., EMBC 2025.", 6.5, 0.4, size=16, bullet=False, color=MUTED)
+    notes(s, "Monkeys H and L: adult male rhesus macaques. Areas 7a and 7b near the intraparietal sulcus (IPS). Vector AAV8-hSyn-Jaws-GFP by convection-enhanced delivery, up to 50 uL per site. "
+             "Red LEDs 634 nm, cortical temperature change under 1 C. Expression faded after about 2 years, and reinjection restored the response. "
+             "The two papers give different numbers for light intensity (about 12 mW/mm2 vs 1.2 mW/cm2) and spacing (EMBC: 800 um pitch, while 32 electrodes over 314 mm2 would average about 3 mm), so they're left off the slide. Worth asking Noah.")
+
+
+def findings_slide(d):
+    s = d.slide("What the papers found on this task")
+    steps(d, s, [("Behaviour", "Light slows reaches by tens of ms, most clearly downward. Paths look similar"),
+                 ("Planning", "Theta power rises near the IPS and in areas 7a and 7b"),
+                 ("Light", "ECoG power goes up, not down, and more over Jaws cortex"),
+                 ("Controls", "No such effect in an untreated monkey, with blue light, or once expression fades"),
+                 ("Likely why", "Upper layers are inhibited, which releases layer 5. A simulation agrees"),
+                 ("Network", "Over Jaws cortex, gamma coherence and theta-gamma coupling fall")], y=1.5, gap=0.8)
+    d.text(s, "Griggs, Stanis et al., Nat Commun 2026. Stanis et al., EMBC 2025.", 6.5, 0.4, size=16, bullet=False, color=MUTED)
+    notes(s, "Reach time, stim vs no stim: H p = 0.04, L p = 0.009. Downward: H p = 0.03, L p = 0.0001. Path length is longer overall in L (p = 4.2e-6). Controls: untreated Monkey C p = 0.53; blue light and tissue growth show no Jaws vs no-Jaws difference "
+             "(p = 0.90, 0.47); H after about 2 years p = 0.76. Theta here is 4-10 Hz, planning vs the 500 ms before the target. Coherence and coupling come from one electrode per region (EMBC). "
+             "Check on our no-stim days, 4-10 Hz, plan vs hold: the all-channel mean is flat (+0.11 dB on 11-12, -0.25 on 08-23), but channels split. On 11-12, 8 rise (A6 +2.1, A5 +1.5 dB) and 7 fall; on 08-23, 5 rise (B2 +1.9) and 8 fall. "
+             "A local rise fits the papers, but we can't place these channels without the channel map.")
+
+
 def task_slides(d):
     s = d.slide("The task: a 4-target center-out reach")
     native(s, "ios_reach", y=1.25, bottom=5.5,
            panel_flags={"Trial timeline": dict(no_xaxis=True, no_yaxis=True),
                         "Single trial": dict(no_yaxis=True), "Trial average": dict(no_yaxis=True)})
-    d.text(s, ["Macaque H, recorded by Noah Stanis. Two 16-channel ECoG arrays",
-               "This deck: H 2021-11-12, no stim, 320 trials, 22 channels, LFP at 333 Hz"], 5.6, 1.2, size=20)
+    d.text(s, ["Monkeys H and L reach with the right hand to 1 of 4 targets, 80 mm from center",
+               "Noah's curated set: H 10 days, 3,865 trials. L 6 days, 5,116 trials",
+               "This deck: H 2021-11-12, no stim, 320 trials, 22 channels, LFP at 333 Hz"], 5.5, 1.6, size=20)
+    notes(s, "Head-fixed, in a dark rig. The middle finger is tracked by motion capture; targets are 25 mm across on a monitor within reach, and a tone is the go cue. Juice reward. "
+             "The papers analyse more trials than the curated set: Nat Commun H 4,522 over 8 sessions, L 11,101 over 13; EMBC H 3,904, L 8,588.")
+
+    setup_slide(d)
+    findings_slide(d)
 
     s = d.slide("A trial has four phases")
     x0, w, top = LEFT + 0.1, (WIDTH - 0.2) / 4, 2.25
-    rows = [("hold", "400 ms", "before the target"),
+    rows = [("hold", "400 ms", "end of a 1 s hold at center"),
             ("plan", "median 400 ms", "target shown, waiting for go"),
             ("move", "median 408 ms", "go cue to touch, reaction included"),
             ("post", "500 ms", "after the touch")]
@@ -77,9 +122,10 @@ def task_slides(d):
     for i, event in enumerate(("target on", "go cue", "touch")):
         box = d.text(s, event, top - 0.5, 0.4, x=x0 + (i + 1) * w - 1.0, w=2.0, size=18, bullet=False, color=MUTED)
         box.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
-    notes(s, "Medians over 320 trials on 2021-11-12. Plan runs 245 to 610 ms, move 95 to 1768 ms. The segment file has no separate "
-             "reaction time. It starts 500 ms before the target and doesn't say how long the hold lasted, so hold here means the "
-             "last 400 ms before the target.")
+    d.text(s, ["The delay is random: 50 to 700 ms in the task, 245 to 610 ms on this day",
+               "On stim days the light runs 900 ms from target on, through plan and most reaches"], 4.85, 1.4, size=22)
+    notes(s, "Medians over 320 trials on 2021-11-12; move runs 95 to 1768 ms. Timing from Nat Commun 2026, Fig. 7. The segment file has no separate reaction time, and the papers' reach time is the same go-to-touch interval. "
+             "Each segment starts 500 ms before the target, so hold here means the last 400 ms of the 1 s hold.")
 
     figure(d, "Spectrum by phase: low frequencies fall in movement", "spectra_phase",
            "Move vs hold: alpha −7.9 dB, beta −5.5 dB, high gamma +1.2 dB. 200 ms Hann windows, evoked response left in.")
@@ -88,8 +134,8 @@ def task_slides(d):
           "50 ms inside each phase, demeaned; per channel the trial-mean power, then dB, then the mean over channels. Resolution about 10 Hz. "
           "23 trials have a move shorter than 200 ms and add nothing to move; 18 add nothing to post. Bootstrap 95% over trials, move vs hold: "
           "alpha -8.37 to -7.55, beta -5.84 to -5.23, high gamma +1.00 to +1.46. Plan vs hold: beta -1.04. Raw lfp gives the same picture: "
-          "change from hold differs by under 0.7 dB everywhere from 3 to 100 Hz. The high gamma band runs to 115 Hz, past the plot. The dip near 60 Hz looks like a line-noise "
-          "notch in the preprocessing, which I haven't confirmed. Log: cache/spectra_run.log.")
+          "change from hold differs by under 0.7 dB everywhere from 3 to 100 Hz. The high gamma band runs to 115 Hz, past the plot. The dip near 60 Hz is the notch filter: EMBC 2025 lists notches at 60, 120 and 180 Hz, "
+          "and both lfp and noart dip about 9 dB at 60 Hz. Log: cache/spectra_run.log.")
 
     figure(d, "Another no-stim day shows the same pattern", "spectra_phase_0823",
            "H 2021-08-23, 404 trials, 16 channels. Move vs hold: alpha −8.2 dB, beta −7.1 dB, high gamma +1.8 dB.")
@@ -267,9 +313,12 @@ def limits_slide(d):
     d.text(s, ["Trial phase uses go and touch, so it isn't known online",
                "Weights describe the average trial, not each trial",
                "One monkey. The HOSVD table and the data vs model spectrum are from one day",
+               "The fits shown have no light, so they say nothing about the Jaws effects",
                "Σ is fixed during the fit, and the fit is a local optimum",
-               "A step at target onset in the cleaned LFP isn't masked here. Masking moved the gains little",
-               "Channel map and brain area still need confirming with Noah"], 1.7, 5.0, size=24)
+               "The cleaned LFP has steps at 0 and 900 ms, not masked here. Masking moved the gains little",
+               "Which channels sit over 7a, 7b and Jaws cortex still needs Noah"], 1.6, 5.3, size=24)
+    notes(s, "The steps are likely from the artefact cleaning. The Nat Commun methods split each trial at light on and off, zero each epoch at the split, and rejoin them by matching 50 ms means, and no-stim trials go through the same processing. "
+             "On 11-12 the median jump is 23.5 uV at 0 ms and 13.9 at 900 ms in noart, against 2.5 typical, and raw lfp has none. Smaller steps at 10 and 910 ms aren't explained by the paper. The paper itself drops the 50 ms after light on and off. To confirm with Noah.")
 
 
 def build():

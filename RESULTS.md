@@ -685,4 +685,4 @@ within a phase, with the same 200 ms window applied in frequency. Data and model
 **Found:** the task's low-frequency drop in movement is in the data on both days, and the fit reproduces its shape but only about half its size in
 move, with the wrong sign for beta in post. High gamma agrees within 0.25 dB. A frozen spectrum isn't the true spectrum of a changing system, and the
 model has no evoked input, so this is a check, not a test. **Limits:** the model check is one day; the target-onset step isn't masked, though raw `lfp`
-differs by under 0.7 dB from 3 to 100 Hz; the dip near 60 Hz looks like a line-noise notch in the preprocessing, not confirmed.
+differs by under 0.7 dB from 3 to 100 Hz; the dip near 60 Hz is the notch filter (EMBC 2025 lists 60, 120 and 180 Hz; about -9 dB in both `lfp` and `noart`).
