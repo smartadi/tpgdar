@@ -29,7 +29,7 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 s12 = importlib.import_module("12_tp_vs_gdar_ios")
 s12b = importlib.import_module("12b_tp_vs_gdar_robust")
-from gdar_tp.sym_tp import (_quad, fit_gls_pooled, fit_sym_tp, polytope_vertices,  # noqa: E402
+from gdar_tp.sym_tp import (_quad, fit_gls_pooled, fit_sym_tp, gls_quads, polytope_vertices,  # noqa: E402
                             symmetric_basis, theta_of)
 from gdar_tp.tp import _barycentric  # noqa: E402
 
@@ -60,6 +60,27 @@ def in_vertices(phi_grid, verts, Hbar):
     return _barycentric(verts @ L, phi_grid @ L)
 
 
+def fold_fit(job):
+    """Fits and held-out scores of one training split from its Grams, in a worker process."""
+    sf, f, R, N, P = job
+    tr, te = s12b.sel(sf, f), s12b.sel(sf, f, False)
+    a = {k: tr[k].sum(0) for k in tr}
+    phi, Sf = fit_gls_pooled(a["Gzz"], a["Gzy"], a["Syy"], a["n"], R)
+    Base = np.stack([theta_of(phi, R, N)] * P)
+    base = s12b.ll(Base, te, [s12.sigma_of(Base, tr)] * P)
+    grid = np.arange(float(P))
+    Hs, hs = gls_quads(tr, R, Sf)
+    Per = np.stack([fit_sym_tp({k: tr[k][[g]] for k in tr}, R, Sf, 1, grid[[g]], n_iter=1, quads=(Hs[[g]], hs[[g]])).theta_grid()[0]
+                    for g in range(P)])
+    gain, family = {}, {}
+    for r in RANKS:
+        m = fit_sym_tp(tr, R, Sf, r, grid, n_iter=25, quads=(Hs, hs))
+        Th = m.theta_grid()
+        gain[r] = s12b.ll(Th, te, [s12.sigma_of(Th, tr)] * P) - base
+        family[r] = m.W @ m.phi
+    return dict(cnt=te["n"], per=s12b.ll(Per, te, [s12.sigma_of(Per, tr)] * P) - base, gain=gain, family=family)
+
+
 def run_variant(D, lab, fo, Z, variant):
     t0 = time.time()
     X0 = D["X"]
@@ -77,8 +98,9 @@ def run_variant(D, lab, fo, Z, variant):
     Hbar = _quad(tot["Gzz"], tot["Gzy"], R, np.linalg.pinv(Sig))[0] / tot["n"]
     out.update(phi0=phi0, Sigma=Sig, R=R, n=st["n"])
     full = {}
+    quads = gls_quads(st, R, Sig)
     for r in RANKS:
-        m = fit_sym_tp(st, R, Sig, r, grid, n_iter=40)
+        m = fit_sym_tp(st, R, Sig, r, grid, n_iter=40, quads=quads)
         full[r] = dict(model=m, poly=polytope_vertices(m, Hbar), J=m.objective)
         p = full[r]["poly"]
         log(f"  [{variant}] rank {r}: {len(m.objective)-1} sweeps, vertices {[bin_name(i) for i in p['index']]}, "
@@ -89,24 +111,15 @@ def run_variant(D, lab, fo, Z, variant):
     gain = {r: np.zeros((s12.NFOLD, P)) for r in RANKS}
     per = np.zeros((s12.NFOLD, P))
     cnt = np.zeros((s12.NFOLD, P))
-    for f in range(s12.NFOLD):
-        Xf = X0 if variant == "felix" else s12.remove_evoked(X0, Z, fo != f)
-        sf = s12b.fold_stats(Xf, lab, K, fo, P)
-        tr, te = s12b.sel(sf, f), s12b.sel(sf, f, False)
-        a = {k: tr[k].sum(0) for k in tr}
-        phi, Sf = fit_gls_pooled(a["Gzz"], a["Gzy"], a["Syy"], a["n"], R)
-        Base = np.stack([theta_of(phi, R, N)] * P)
-        base = s12b.ll(Base, te, [s12.sigma_of(Base, tr)] * P)
-        cnt[f] = te["n"]
-        Per = np.stack([fit_sym_tp({k: tr[k][[g]] for k in tr}, R, Sf, 1, grid[[g]], n_iter=1).theta_grid()[0]
-                        for g in range(P)])
-        per[f] = s12b.ll(Per, te, [s12.sigma_of(Per, tr)] * P) - base
+    jobs = [(s if variant == "felix" else s12b.fold_stats(s12.remove_evoked(X0, Z, fo != f), lab, K, fo, P), f, R, N, P)
+            for f in range(s12.NFOLD)]
+    for f, done in enumerate(s12.fold_map(fold_fit, jobs)):
+        cnt[f] = done["cnt"]
+        per[f] = done["per"]
         for r in RANKS:
-            m = fit_sym_tp(tr, R, Sf, r, grid, n_iter=25)
-            Th = m.theta_grid()
-            gain[r][f] = s12b.ll(Th, te, [s12.sigma_of(Th, tr)] * P) - base
-            lams[r].append(in_vertices(m.W @ m.phi, full[r]["poly"]["phi"], Hbar))
-        log(f"  [{variant}] fold {f}, {time.time()-t0:.0f}s")
+            gain[r][f] = done["gain"][r]
+            lams[r].append(in_vertices(done["family"][r], full[r]["poly"]["phi"], Hbar))
+    log(f"  [{variant}] folds done, {time.time()-t0:.0f}s")
     for r in RANKS:
         L = np.stack(lams[r])
         full[r]["lam_se"] = np.sqrt((s12.NFOLD - 1) / s12.NFOLD * ((L - L.mean(0)) ** 2).sum(0))

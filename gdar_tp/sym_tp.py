@@ -22,6 +22,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 import scipy.sparse as sp
+from scipy.linalg import cho_factor, cho_solve
 
 from .tp import _barycentric
 from .tpgdar import resid_cov_sum
@@ -80,8 +81,21 @@ def _quad(Gzz, Gzy, R, Sinv):
 
 
 def _solve(H, h, jitter):
-    d = np.trace(H) / len(H) if len(H) else 1.0
-    return np.linalg.solve(H + jitter * d * np.eye(len(H)), h)
+    """``(H + jitter d I) x = h``, d the mean diagonal.  H is a Gram-weighted form, so Cholesky; LU if rounding breaks it."""
+    M = np.array(H, dtype=float)
+    d = np.trace(M) / len(M) if len(M) else 1.0
+    M[np.diag_indices(len(M))] += jitter * d
+    try:
+        return cho_solve(cho_factor(M, lower=True, check_finite=False), h, check_finite=False)
+    except np.linalg.LinAlgError:
+        return np.linalg.solve(M, h)
+
+
+def gls_quads(stats, R, Sigma):
+    """Stacked ``H_g, h_g`` of every condition, so that fits with the same Sigma can share them."""
+    Sinv = np.linalg.pinv(Sigma)
+    quads = [_quad(stats["Gzz"][g], stats["Gzy"][g], R, Sinv) for g in range(len(stats["n"]))]
+    return np.stack([q[0] for q in quads]), np.stack([q[1] for q in quads])
 
 
 def fit_gls_pooled(Gzz, Gzy, Syy, n, R, jitter=1e-10):
@@ -192,7 +206,7 @@ def _enclosing_triangle(Y2):
     return best
 
 
-def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10, starts=("pooled",)):
+def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10, starts=("pooled",), quads=None):
     """Joint GLS fit of a rank-``r`` TP-GDAR on per-condition ``stats`` (see stack_stats).
 
     ``starts`` lists the initialisations to run; the lowest final objective wins.
@@ -202,13 +216,12 @@ def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10, st
     ``pooled`` can stall when a few conditions hold nearly all the energy (a condition with an
     unstable mode, say): the pooled metric is then set by those few directions.  ``tol`` is
     relative to the whole objective, so such a fit can also stop early; lower it for those data.
+
+    ``quads`` is :func:`gls_quads` of the same stats and Sigma, for callers that fit several ranks.
     """
     P = len(stats["n"])
     N = stats["Syy"].shape[1]
-    Sinv = np.linalg.pinv(Sigma)
-    quads = [_quad(stats["Gzz"][g], stats["Gzy"][g], R, Sinv) for g in range(P)]
-    Hs = np.stack([q[0] for q in quads])
-    hs = np.stack([q[1] for q in quads])
+    Hs, hs = gls_quads(stats, R, Sigma) if quads is None else quads
     n_phi = hs.shape[1]
 
     def objective(W, phi):
@@ -241,13 +254,14 @@ def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10, st
             for g in range(P):                              # W-step
                 Hw = phi @ Hs[g] @ phi.T
                 W[g] = np.linalg.lstsq(Hw, phi @ hs[g], rcond=1e-12)[0]
-            A = np.zeros((r * n_phi, r * n_phi))            # phi-step
-            b = np.zeros(r * n_phi)
-            for g in range(P):
-                A += np.kron(np.outer(W[g], W[g]), Hs[g])
-                b += np.kron(W[g], hs[g])
-            phi = _solve(A, b, jitter).reshape(r, n_phi)
-            # gauge: unit weight columns, leading (largest) operator first
+            A = np.zeros((r * n_phi, r * n_phi))            # phi-step: A_jk = sum_g W[g, j] W[g, k] H_g
+            for j in range(r):
+                for k in range(j, r):
+                    block = np.tensordot(W[:, j] * W[:, k], Hs, axes=1)
+                    A[j * n_phi:(j + 1) * n_phi, k * n_phi:(k + 1) * n_phi] = block
+                    A[k * n_phi:(k + 1) * n_phi, j * n_phi:(j + 1) * n_phi] = block
+            phi = _solve(A, (W.T @ hs).ravel(), jitter).reshape(r, n_phi)
+            # gauge: unit weight columns
             scale = np.linalg.norm(W, axis=0) / np.sqrt(P)
             W, phi = W / scale, phi * scale[:, None]
             obj.append(objective(W, phi))

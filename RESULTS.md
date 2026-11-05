@@ -329,8 +329,18 @@ Gain = held-out one-step log-likelihood over GDAR, nats/sample (over 22 channels
 | rank 3 (3,483 params) | +0.137 | +0.168 |
 | rank 4 (4,640) | +0.127 | +0.178 |
 | 12 separate fits (13,824) | +0.098 | +0.173 |
-| leave-one-bin-out: rank 3, weights interpolated | +0.151 | +0.144 |
-| leave-one-bin-out: separate fit on the neighbouring bin | -0.019 | -0.080 |
+| leave-one-bin-out: rank 3, weights interpolated | +0.122 | +0.110 |
+| leave-one-bin-out: separate fit on the neighbouring bin | +0.044 | +0.004 |
+| leave-one-bin-out: separate fit on that bin (seen, for reference) | +0.077 | +0.121 |
+| sensitivity: neighbouring-bin fit with the Sigma of its own bin | +0.089 | +0.082 |
+
+Leave-one-bin-out rows all use GDAR's Sigma from the same training data, so only the operators differ.
+
+**Corrected 2026-11-05 (L-2026-11-05-d).** These rows first read +0.151 / +0.144 for rank 3 and -0.019 / -0.080 for the
+neighbouring bin. Each row then took Sigma from its own operator's residuals over all kept bins. For one bin's operator
+that Sigma is about 4 % too large (median trace ratio 1.04), which penalised those rows alone, so "the neighbouring-bin
+fit is worse than GDAR" was an artefact. The sensitivity row gives that fit a noise model GDAR and TP don't get: by bin it is
+at or below zero before go (+0.013, -0.032, -0.075 / -0.084, -0.133, -0.004) and reaches +0.229 / +0.269 after go.
 
 Trial-level Wilcoxon p < 1e-36 for every TP row of the fitted grids (not across sessions).
 
@@ -338,9 +348,11 @@ Trial-level Wilcoxon p < 1e-36 for every TP row of the fitted grids (not across 
 - A single GDAR misses real task dependence. The gain is not the evoked response entering
   through A: it grows when evoked kernels are removed.
 - Rank 2 takes about 75 % of the per-phase gain with half the parameters.
-- It predicts task times it never saw (interior bins). Separate fits cannot: the
-  neighbouring-bin fit is worse than GDAR. On 12 bins rank 3-4 equals or beats 12 separate fits at a quarter to a third
-  of the parameters. This is the clearest advantage over both GDAR and separate fits.
+- It predicts task times it never saw (interior bins). Rank 3 gains +0.122 / +0.110 over GDAR, and a separate fit on the
+  neighbouring bin +0.044 / +0.004, so that fit is about level with GDAR. Rank 3 leads it by +0.079 ± 0.007 / +0.105 ± 0.008
+  (trial SEM). It also matches a fit on the bin itself, which has only that 100 ms bin to learn from. On 12 bins rank 3-4 equals
+  or beats 12 separate fits at a quarter to a third of the parameters. This is an advantage over both GDAR and separate fits,
+  smaller than first reported.
 - The operators give a readable effect: the rank-2 model spectrum near 15 Hz is about +3.7 dB
   in hold and about -4 dB in move and post, relative to GDAR, the pattern expected of beta
   desynchronisation (read from the model, not yet checked against the data spectrum).
@@ -695,3 +707,36 @@ within a phase, with the same 200 ms window applied in frequency. Data and model
 move, with the wrong sign for beta in post. High gamma agrees within 0.25 dB. A frozen spectrum isn't the true spectrum of a changing system, and the
 model has no evoked input, so this is a check, not a test. **Limits:** the model check is one day; the target-onset step isn't masked, though raw `lfp`
 differs by under 0.7 dB from 3 to 100 Hz; the dip near 60 Hz is the notch filter (EMBC 2025 lists 60, 120 and 180 Hz; about -9 dB in both `lfp` and `noart`).
+
+## Checks from the code review of the IOS Reach fits — 2026-11-05
+
+H 2021-11-12 unless noted, K = 16, 16 warped bins. Measured with throwaway scripts, which aren't in the repo. No method changed; each
+of these still needs a decision. Each cell: evoked left in / evoked removed.
+
+**The vertex model scores below the fit it comes from.** Gains in this file are for the fit with free weights. `polytope_vertices`
+first projects the weights onto sum-to-one, which changes the family when `affine_err` isn't zero (0.017 to 0.037 here).
+
+| held-out gain over GDAR | free weights (reported) | sum-to-one (what the vertices describe) |
+|---|---|---|
+| rank 2 | +0.190 / +0.248 | +0.142 / +0.224 |
+| rank 3 | +0.222 / +0.323 | +0.214 / +0.313 |
+
+The projection also depends on the column scaling of W, not on the data metric. Vertex maps and weights are therefore not exact
+coordinates of the scored model. Any LMI built on these vertices inherits the lower gain.
+
+**Noise doesn't explain why edge maps fail to repeat, but channel identity might.** Correlation of edges summed over lags:
+
+| | r |
+|---|---|
+| move-minus-rest, disjoint random halves of 11-12 (4 splits, 50 edges) | 0.72 to 0.90 / 0.85 to 0.93 |
+| move-minus-rest, 11-12 vs 08-23 (16 edges) | 0.15 / 0.47 |
+| move-minus-rest, 11-12 vs 11-11 no light, light (40 edges) | 0.12, 0.21 / 0.15, 0.13 |
+| pooled GDAR, 11-12 vs 08-23 (16 edges) | 0.66 / 0.72 |
+| pooled GDAR, 11-12 vs 11-11 no light, light (40 edges) | 0.37, 0.35 / 0.26, 0.18 |
+
+The static map repeats poorly with the next day and better with a day three months earlier. So low cross-day r can't yet be read as
+the switch's edges differing: a channel identity or graph composition difference would give the same numbers. That's a lead, not a
+result. It needs the channel map from Noah. The stim day may also differ for other reasons.
+
+**The step is not what makes 08-23 agree.** With the steps masked on both days, 08-23 vs 11-12 goes from 0.47 to 0.44 (evoked removed)
+and 0.15 to 0.09 (left in). 11-12 masked against its unmasked self is r = 0.99.

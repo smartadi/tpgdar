@@ -25,7 +25,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 s12 = importlib.import_module("12_tp_vs_gdar_ios")
-from gdar_tp.sym_tp import fit_gls_pooled, fit_sym_tp, symmetric_basis, theta_of  # noqa: E402
+from gdar_tp.sym_tp import fit_gls_pooled, fit_sym_tp, gls_quads, symmetric_basis, theta_of  # noqa: E402
 from gdar_tp.tpgdar import fit_pooled, resid_cov_sum, row_columns  # noqa: E402
 
 K0 = 33     # 33 x 3 ms lags: hold (-400 ms on) still has them all inside the -500 ms segment
@@ -79,36 +79,52 @@ def ll(Th, st, Sigs):
     return out
 
 
-def run(X_of, lab, P, fo, A, Ks, ranks=(2,), edge=False, label=""):
+def fold_fit(job):
+    """Models and held-out scores of one fold from its Grams, in a worker process."""
+    s, f, A, K, P, ranks, edge = job
     N = A.shape[0]
+    R = symmetric_basis(A, K)
+    tr, te = sel(s, f), sel(s, f, False)
+    all_tr = {k: tr[k].sum(0) for k in tr}
+    phi, Sig0 = fit_gls_pooled(all_tr["Gzz"], all_tr["Gzy"], all_tr["Syy"], all_tr["n"], R)
+    Hs, hs = gls_quads(tr, R, Sig0)
+    models = {"GDAR": np.stack([theta_of(phi, R, N)] * P)}
+    for r in ranks:
+        models[f"TP r{r}"] = fit_sym_tp(tr, R, Sig0, r, np.arange(float(P)), n_iter=25, quads=(Hs, hs)).theta_grid()
+    models["per-phase"] = np.stack([
+        fit_sym_tp({k: tr[k][[g]] for k in tr}, R, Sig0, 1, np.arange(1.0), n_iter=1, quads=(Hs[[g]], hs[[g]])).theta_grid()[0]
+        for g in range(P)])
+    if edge:
+        mask = A | np.eye(N, dtype=bool)
+        models["edge-wise OLS"] = np.stack([fit_pooled(tr, row_columns(mask, K), 1e-8)] * P)
+    scores = {}
+    for name, Th in models.items():
+        shared = s12.sigma_of(Th, tr)
+        scores[name] = dict(shared=ll(Th, te, [shared] * P), per=ll(Th, te, sigma_per(Th, tr)),
+                            diag=ll(Th, te, [np.diag(np.diag(shared))] * P),
+                            sse=np.array([np.trace(resid_cov_sum(Th[g], te["Gzz"][g], te["Gzy"][g], te["Syy"][g])) for g in range(P)]))
+    return scores, te["n"]
+
+
+def run(X_of, lab, P, fo, A, Ks, ranks=(2,), edge=False, label=""):
     rows = {}
     for K in Ks:
         t0 = time.time()
-        R = symmetric_basis(A, K)
         tot = {}
         ncond = None
+        jobs = []
+        X_prev, s = None, None
         for f in range(s12.NFOLD):
-            s = fold_stats(X_of(f), lab, K, fo, P)
-            tr, te = sel(s, f), sel(s, f, False)
-            ncond = te["n"] if ncond is None else ncond + te["n"]
-            all_tr = {k: tr[k].sum(0) for k in tr}
-            phi, Sig0 = fit_gls_pooled(all_tr["Gzz"], all_tr["Gzy"], all_tr["Syy"], all_tr["n"], R)
-            models = {"GDAR": np.stack([theta_of(phi, R, N)] * P)}
-            for r in ranks:
-                models[f"TP r{r}"] = fit_sym_tp(tr, R, Sig0, r, np.arange(float(P)), n_iter=25).theta_grid()
-            models["per-phase"] = np.stack([
-                fit_sym_tp({k: tr[k][[g]] for k in tr}, R, Sig0, 1, np.arange(1.0), n_iter=1).theta_grid()[0]
-                for g in range(P)])
-            if edge:
-                mask = A | np.eye(N, dtype=bool)
-                models["edge-wise OLS"] = np.stack([fit_pooled(tr, row_columns(mask, K), 1e-8)] * P)
-            for name, Th in models.items():
-                shared = s12.sigma_of(Th, tr)
+            X = X_of(f)
+            if X is not X_prev:         # the evoked-left-in data are the same in every fold
+                X_prev, s = X, fold_stats(X, lab, K, fo, P)
+            jobs.append((s, f, A, K, P, ranks, edge))
+        for scores, n_te in s12.fold_map(fold_fit, jobs):
+            ncond = n_te if ncond is None else ncond + n_te
+            for name, one in scores.items():
                 d = tot.setdefault(name, dict(shared=np.zeros(P), per=np.zeros(P), diag=np.zeros(P), sse=np.zeros(P)))
-                d["shared"] += ll(Th, te, [shared] * P)
-                d["per"] += ll(Th, te, sigma_per(Th, tr))
-                d["diag"] += ll(Th, te, [np.diag(np.diag(shared))] * P)
-                d["sse"] += np.array([np.trace(resid_cov_sum(Th[g], te["Gzz"][g], te["Gzy"][g], te["Syy"][g])) for g in range(P)])
+                for key, v in one.items():
+                    d[key] += v
         nc = ncond.sum()
         rows[K] = dict(tot=tot, n=ncond)
         log(f"{label} K={K}  GDAR ell {tot['GDAR']['shared'].sum()/nc:.3f}  ({time.time()-t0:.0f}s)")

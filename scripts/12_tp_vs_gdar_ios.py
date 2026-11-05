@@ -22,6 +22,10 @@ state-dependent A can absorb:
 Score: held-out one-step Gaussian log-likelihood (each model has its own full Sigma from
 its training residuals), 5-fold CV over trials, as Delta-ell vs GDAR, nats per sample.
 Order K is chosen by CV of the baseline only, then fixed for every model.
+Leave-one-bin-out is the exception: every row is scored with GDAR's Sigma from the same training
+data, so that only the operators differ.  A single bin's operator run over all the other bins has an
+inflated residual, which would penalise that row alone.  "nearest bin, own Sigma" is the sensitivity
+row: the neighbouring-bin fit with the noise of its own bin, which GDAR and TP don't get.
 
 Run:  .venv\\Scripts\\python scripts/12_tp_vs_gdar_ios.py [--plot]
 """
@@ -29,11 +33,13 @@ Run:  .venv\\Scripts\\python scripts/12_tp_vs_gdar_ios.py [--plot]
 from __future__ import annotations
 
 import os
-for _v in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+THREAD_VARS = ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS")
+for _v in THREAD_VARS:
     os.environ.setdefault(_v, "6")
 import pickle
 import sys
 import time
+from concurrent.futures import ProcessPoolExecutor
 
 import numpy as np
 from scipy.signal import decimate
@@ -41,7 +47,7 @@ from scipy.stats import wilcoxon
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-from gdar_tp.sym_tp import fit_gls_pooled, fit_sym_tp, symmetric_basis, theta_of  # noqa: E402
+from gdar_tp.sym_tp import fit_gls_pooled, fit_sym_tp, gls_quads, symmetric_basis, theta_of  # noqa: E402
 from gdar_tp.tpgdar import (fit_joint, fit_per_condition, fit_pooled,  # noqa: E402
                             resid_cov_sum, row_columns)
 
@@ -68,13 +74,23 @@ TBIN = np.arange(-400, 801, 100)
 RANKS_PHASE = (1, 2, 3)
 RANKS_TIME = (1, 2, 3, 4, 6)
 RANKS_LOBO = (1, 2, 3)
+GRIDS = {"phase": (np.arange(4.0), RANKS_PHASE), "time": (TBIN[:-1] + 50.0, RANKS_TIME)}
 RIDGES = (1e-6, 1e-8, 1e-10, 1e-12)
 SIG_SHRINK = 0.01
 HORIZONS = (1, 3, 6, 10, 17)
+FOLD_WORKERS, FOLD_THREADS = 4, 2   # 8 physical cores here; over about 6 threads one fit gains nothing
 
 
 def log(*a):
     print(*a, flush=True)
+
+
+def fold_map(fn, jobs):
+    """Run fold jobs in worker processes, which inherit a small BLAS thread count from this environment."""
+    for v in THREAD_VARS:
+        os.environ[v] = str(FOLD_THREADS)
+    with ProcessPoolExecutor(FOLD_WORKERS) as ex:
+        return list(ex.map(fn, jobs))
 
 
 # ------------------------------------------------------------------------------- data
@@ -157,15 +173,16 @@ def remove_evoked(X, Z, train, lam=1e-2):
 
 
 # ------------------------------------------------------------------------------ stats
-def trial_cond_stats(X, lab, K, K0):
-    """Per (trial, condition) Grams.  Every K uses the samples allowed by K0 >= K."""
+def trial_cond_stats(X, lab, K, K0, P=None, per_trial=True):
+    """Per (trial, condition) Grams, or per condition summed over trials.  Every K uses the samples allowed by K0 >= K."""
     n, T, N = X.shape
     D_ = K * N
-    P = lab.max() + 1
-    Gzz = np.zeros((n, P, D_, D_))
-    Gzy = np.zeros((n, P, D_, N))
-    Syy = np.zeros((n, P, N, N))
-    cnt = np.zeros((n, P))
+    P = lab.max() + 1 if P is None else P
+    head = (n, P) if per_trial else (P,)
+    Gzz = np.zeros(head + (D_, D_))
+    Gzy = np.zeros(head + (D_, N))
+    Syy = np.zeros(head + (N, N))
+    cnt = np.zeros(head)
     ts = np.arange(K0 - 1, T - 1)
     for i in range(n):
         Z = np.concatenate([X[i, ts - k] for k in range(K)], 1)
@@ -174,11 +191,12 @@ def trial_cond_stats(X, lab, K, K0):
         for g in range(P):
             m = l == g
             if m.any():
+                at = (i, g) if per_trial else g
                 Zg, Yg = Z[m], Y[m]
-                Gzz[i, g] = Zg.T @ Zg
-                Gzy[i, g] = Zg.T @ Yg
-                Syy[i, g] = Yg.T @ Yg
-                cnt[i, g] = m.sum()
+                Gzz[at] += Zg.T @ Zg
+                Gzy[at] += Zg.T @ Yg
+                Syy[at] += Yg.T @ Yg
+                cnt[at] += m.sum()
     return dict(Gzz=Gzz, Gzy=Gzy, Syy=Syy, n=cnt)
 
 
@@ -288,16 +306,16 @@ def fit_grid(st, R, N, K, ranks, p_grid, mask, ridge):
     models = {"GDAR": np.stack([theta_of(phi, R, N)] * P)}
     params = {"GDAR": n_phi}
     tps = {}
+    Hs, hs = gls_quads(st, R, Sig)
     for r in ranks:
-        m = fit_sym_tp(st, R, Sig, r, p_grid)
+        m = fit_sym_tp(st, R, Sig, r, p_grid, quads=(Hs, hs))
         models[f"TP r{r}"] = m.theta_grid()
         params[f"TP r{r}"] = m.n_params
         tps[r] = m
-    one = {k: None for k in ()}
     per = []
     for g in range(P):
         single = {k: st[k][[g]] for k in st}
-        per.append(fit_sym_tp(single, R, Sig, 1, p_grid[[g]], n_iter=1).theta_grid()[0])
+        per.append(fit_sym_tp(single, R, Sig, 1, p_grid[[g]], n_iter=1, quads=(Hs[[g]], hs[[g]])).theta_grid()[0])
     models["per-condition"] = np.stack(per)
     params["per-condition"] = P * n_phi
     # the repo's edge-wise TP-GDAR (not symmetric), same Grams
@@ -330,6 +348,62 @@ def pick_ridge(T_all, fo, cols):
     return best[0]
 
 
+def leave_one_bin_out(tr, T, R, N, p_grid):
+    """Per (test trial, bin) ell of a fit that never saw that bin, interior bins.  All rows share GDAR's Sigma."""
+    n_te, P = T["n"].shape
+    every = np.ones(n_te, bool)
+    lobo = {}
+    for h in range(1, P - 1):
+        keep = [g for g in range(P) if g != h]
+        sub = {k: tr[k][keep] for k in tr}
+        tot = pool(sub)
+        phi, Sig0 = fit_gls_pooled(tot["Gzz"], tot["Gzy"], tot["Syy"], tot["n"], R)
+        gdar = theta_of(phi, R, N)
+        before = {k: tr[k][[h - 1]] for k in tr}
+        near = fit_sym_tp(before, R, Sig0, 1, p_grid[[h - 1]], n_iter=1).theta_grid()[0]
+        oracle = fit_sym_tp({k: tr[k][[h]] for k in tr}, R, Sig0, 1, p_grid[[h]], n_iter=1).theta_grid()[0]
+        thetas = {"GDAR": gdar, "nearest bin": near, "oracle": oracle}
+        quads = gls_quads(sub, R, Sig0)
+        for r in RANKS_LOBO:
+            thetas[f"TP r{r}"] = fit_sym_tp(sub, R, Sig0, r, p_grid[keep], quads=quads).theta_at(p_grid[h])
+        sigmas = dict.fromkeys(thetas, sigma_of(np.stack([gdar] * len(keep)), sub))
+        thetas["nearest bin, own Sigma"] = near
+        sigmas["nearest bin, own Sigma"] = sigma_of(near[None], before)
+        bin_h = {k: T[k][:, [h]] for k in T}
+        for name, Th in thetas.items():
+            ll, _ = ll_matrix(Th[None], bin_h, every, sigmas[name])
+            lobo.setdefault(name, np.zeros((n_te, P)))[:, h] = ll[:, 0]
+    return lobo
+
+
+def fold_job(job):
+    """One fold of one grid, in a worker process.  Per-trial Grams only for the test trials, to fit in memory."""
+    variant, grid, f, K, ridge = job
+    t0 = time.time()
+    D = load()
+    fo = folds(D["ang"])
+    X = D["X"] if variant == "felix" else remove_evoked(D["X"], evoked_design(D), fo != f)
+    N = X.shape[2]
+    R = symmetric_basis(D["A"], K)
+    mask = D["A"] | np.eye(N, dtype=bool)
+    lab = labels(D)[grid]
+    p_grid, ranks = GRIDS[grid]
+    P, K0 = len(p_grid), max(KS)
+    te = fo == f
+    tr = trial_cond_stats(X[~te], lab[~te], K, K0, P=P, per_trial=False)
+    T = trial_cond_stats(X[te], lab[te], K, K0, P=P)
+    every = np.ones(int(te.sum()), bool)
+    models, params, _, _ = fit_grid(tr, R, N, K, ranks, p_grid, mask, ridge)
+    scores, vaf = {}, {}
+    for name, Th in models.items():
+        scores[name] = ll_matrix(Th, T, every, sigma_of(Th, tr))
+        if grid == "phase" and name in ("GDAR", "TP r2", "TP r3", "per-condition"):
+            vaf[name] = h_step_vaf(Th, X, lab, te, K, K0)
+    lobo = leave_one_bin_out(tr, T, R, N, p_grid) if grid == "time" else {}
+    log(f"  [{variant}/{grid}] fold {f} done in {time.time()-t0:.0f}s")
+    return dict(grid=grid, te=te, n=T["n"], params=params, scores=scores, vaf=vaf, lobo=lobo)
+
+
 def run_variant(D, labs, fo, K, variant, Z):
     t0 = time.time()
     X0 = D["X"]
@@ -338,57 +412,32 @@ def run_variant(D, labs, fo, K, variant, Z):
     mask = D["A"] | np.eye(N, dtype=bool)
     cols = row_columns(mask, K)
     res = {"K": K, "variant": variant}
-    grids = {"phase": (np.arange(4.0), RANKS_PHASE), "time": ((TBIN[:-1] + 50.0), RANKS_TIME)}
-    ridge = None
     K0 = max(KS)
-    for grid, (p_grid, ranks) in grids.items():
-        lab = labs[grid]
+    ridge = pick_ridge(trial_cond_stats(X0 if variant == "felix" else remove_evoked(X0, Z, fo != 0), labs["phase"], K, K0), fo, cols)
+    log(f"  edge-wise ridge {ridge:.0e}")
+    jobs = [(variant, grid, f, K, ridge if grid == "phase" else None) for grid in GRIDS for f in range(NFOLD)]
+    done = fold_map(fold_job, jobs)
+    for grid, (p_grid, _) in GRIDS.items():
         P = len(p_grid)
         store = {}
         counts = np.zeros((n, P))
-        params = None
         vaf = {}
         lobo = {}
-        for f in range(NFOLD):
-            X = X0 if variant == "felix" else remove_evoked(X0, Z, fo != f)
-            T = trial_cond_stats(X, lab, K, K0)
-            counts += T["n"] * (fo == f)[:, None]
-            tr = sum_stats(T, fo != f)
-            if ridge is None:
-                ridge = pick_ridge(T, fo, cols)
-                log(f"  edge-wise ridge {ridge:.0e}")
-            models, params, _, _ = fit_grid(tr, R, N, K, ranks, p_grid, mask,
-                                            ridge if grid == "phase" else None)
-            for name, Th in models.items():
-                Sig = sigma_of(Th, tr)
-                ll, sse = ll_matrix(Th, T, fo == f, Sig)
+        for out in (d for d in done if d["grid"] == grid):
+            te = out["te"]
+            counts[te] = out["n"]
+            params = out["params"]
+            for name, (ll, sse) in out["scores"].items():
                 s = store.setdefault(name, dict(ll=np.zeros((n, P)), sse=np.zeros((n, P))))
-                s["ll"][fo == f] = ll
-                s["sse"][fo == f] = sse
-                if grid == "phase" and name in ("GDAR", "TP r2", "TP r3", "per-condition"):
-                    vaf.setdefault(name, []).append(h_step_vaf(Th, X, lab, fo == f, K, K0))
-            if grid == "time":
-                for h in range(1, P - 1):           # leave-one-bin-out, interior bins
-                    keep = [g for g in range(P) if g != h]
-                    sub = {k: tr[k][keep] for k in tr}
-                    tot = pool(sub)
-                    phi, Sig0 = fit_gls_pooled(tot["Gzz"], tot["Gzy"], tot["Syy"], tot["n"], R)
-                    per_full = fit_sym_tp({k: tr[k][[h]] for k in tr}, R, Sig0, 1, p_grid[[h]], n_iter=1)
-                    near = fit_sym_tp({k: tr[k][[h - 1]] for k in tr}, R, Sig0, 1, p_grid[[h - 1]], n_iter=1)
-                    cand = {"GDAR": (np.stack([theta_of(phi, R, N)] * len(keep)), theta_of(phi, R, N)),
-                            "nearest bin": (np.stack([near.theta_grid()[0]] * len(keep)), near.theta_grid()[0]),
-                            "oracle": (np.stack([per_full.theta_grid()[0]] * len(keep)), per_full.theta_grid()[0])}
-                    for r in RANKS_LOBO:
-                        m = fit_sym_tp(sub, R, Sig0, r, p_grid[keep])
-                        cand[f"TP r{r}"] = (m.theta_grid(), m.theta_at(p_grid[h]))
-                    for name, (Thtr, Thh) in cand.items():
-                        Sig = sigma_of(Thtr, sub)
-                        ll, _ = ll_matrix(np.stack([Thh] * P), {k: T[k] for k in T}, fo == f, Sig)
-                        arr = lobo.setdefault(name, np.zeros((n, P)))
-                        arr[fo == f, h] = ll[:, h]
-            log(f"  [{variant}/{grid}] fold {f} done, {time.time()-t0:.0f}s")
+                s["ll"][te] = ll
+                s["sse"][te] = sse
+            for name, v in out["vaf"].items():
+                vaf.setdefault(name, []).append(v)
+            for name, arr in out["lobo"].items():
+                lobo.setdefault(name, np.zeros((n, P)))[te] = arr
         res[grid] = dict(store=store, n=counts, params=params, p_grid=p_grid,
                          vaf={k: np.mean(v, 0) for k, v in vaf.items()}, lobo=lobo)
+    log(f"  [{variant}] folds done, {time.time()-t0:.0f}s")
 
     # full-data operators for the interpretation figure, plus disjoint split-half reliability
     X = X0 if variant == "felix" else remove_evoked(X0, Z, np.ones(n, bool))
@@ -538,7 +587,7 @@ def fig_prediction(R):
         ax.axvline(0, color=MUTED, lw=0.8, ls=":")
         ax.set_xlabel("time of the held-out bin re go cue (ms)")
         ax.set_ylabel("gain over GDAR (nats/sample)")
-        ax.set_ylim(-0.2, 0.3)
+        ax.set_ylim(-0.2, 0.35)
         ax.set_title(ttl)
     axs[1, 0].legend(loc="lower right", fontsize=7.5)
     # F: h-step
@@ -680,12 +729,14 @@ def main():
     log(f"-> K = {K}  ({1000*K/FS:.0f} ms)")
     Z = evoked_design(D)
     out = {"K": K, "Kcv": Kcv, "pos": D["pos"], "A": D["A"], "ch": D["ch"], "n_trials": n}
+    partial = CACHE + ".partial"        # the deck figures read CACHE, so it only ever holds a whole run
     for variant in ("felix", "induced"):
         log(f"\n=== variant {variant} ===")
         out[variant] = run_variant(D, labs, fo, K, variant, Z)
         summarize(out[variant])
-        with open(CACHE, "wb") as f:
+        with open(partial, "wb") as f:
             pickle.dump(out, f)
+    os.replace(partial, CACHE)
     log(f"\ndone in {time.time()-t0:.0f}s, wrote {CACHE}")
 
 
