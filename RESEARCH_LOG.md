@@ -2,6 +2,12 @@
 
 Newest on top. Format and rules: research-hub `agents/logging.md`. One entry per logical unit of work, committed together with that work. Issues and the hub worklog cite entries by ID.
 
+### L-2026-11-05-e · Deck's unseen-time panel redrawn with the corrected numbers
+commit: 54f4ddf+this · branch: master · issues: #75 · pc: Pinnacle
+**Did/Found:** At Aditya's yes, redrew panel C of slide 24 of `TP-GDAR_IOS_Reach.pptx` ("TP beats one GDAR on held-out trials and unseen task times") from the corrected script 12 cache. With evoked left in, rank 3 lies above the fit on that bin, which lies above the neighbouring-bin fit, in all 10 inner bins. The three floating labels are now a key in the empty lower right, because their old positions assumed the neighbour's dip below zero. The speaker notes now give the corrected numbers, the shared-Sigma scoring and the own-Sigma sensitivity row. Panels A and B are unchanged. The online copy had changed since L-2026-11-05-c (saved at 10:42): Aditya removed four control slides (learn it from data; one gain for every p; both gains keep the network stable; vertices matter more than the LMI) and nudged slide 8's state-space equation up 0.03 in. Both changes are now in the script, so the deck has 30 slides.
+**State:** the online copy was overwritten only after its hash matched the version diffed; OneDrive's version history has Aditya's 10:42 version. Against that version, only slide 24 (panel C and its notes) differs, plus a text box holding only "s" over the consensus movie, which wasn't carried over because it looks accidental. Slides 8, 24 and 30 were rendered through desktop PowerPoint and viewed; the deck wasn't opened online. `GDAR-TP_MPC_and_TP-GDAR.pptx` (`make_deck_figures_real.py`, `make_mpc_tp_deck.py`) still shows the old curve.
+**Resume:** before the next rebuild, compare the OneDrive copy's MD5 with 77a40e6fca474c3800d5e2d30a302a1b. `.venv\Scripts\python scripts/make_deck_figures_r3.py tp_vs_gdar_r3`, then `.venv\Scripts\python scripts/make_ios_tp_deck.py`.
+
 ### L-2026-11-05-d · Leave-one-bin-out Sigma corrected; fits about 6x faster on CPU, same numbers
 commit: f453ed2+this · branch: master · issues: #75 · pc: Pinnacle
 **Did/Found:**

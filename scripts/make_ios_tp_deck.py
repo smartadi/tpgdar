@@ -3,7 +3,8 @@ r"""Simple deck: the IOS Reach task, its spectrum by phase, the TP paper's pipel
 Run:  .venv\Scripts\python scripts/make_ios_tp_deck.py
 Writes TP-GDAR_IOS_Reach.pptx in the repo.  The copy to edit online lives in OneDrive\Talks; this script never touches it,
 so a rebuild can't overwrite edits made there.  Edits Aditya made online on 2026-11-05 (slides on the task, the setup and
-the TP paper, and removing the Limits slide) are written into this script.
+the TP paper, and removing the Limits slide; then, by 10:42, removing four control slides and nudging slide 8's state-space
+equation up 0.03 in) are written into this script.  Not carried over: a text box holding only "s" over the consensus movie.
 
 Text and figures are ordinary text and shapes (scripts/deck_native.py), which PowerPoint for the web can edit.  Plotted
 numbers aren't linked to the shapes.  Equations are LaTeX pictures (scripts/deck_latex.py) with their source as alt text.
@@ -21,7 +22,7 @@ import sys
 
 from PIL import Image
 from pptx.dml.color import RGBColor
-from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE
+from pptx.enum.shapes import MSO_CONNECTOR, MSO_SHAPE, MSO_SHAPE_TYPE
 from pptx.enum.text import PP_ALIGN
 from pptx.util import Inches, Pt
 
@@ -161,6 +162,7 @@ def paper_slides(d):
     s = d.slide("The TP paper: from a known model to a polytope")
     steps(d, s, [("State space", r"\begin{bmatrix}\dot x(t)\\ y(t)\end{bmatrix}=S(p(t))\begin{bmatrix}x(t)\\ u(t)\end{bmatrix},\qquad S(p)=\begin{bmatrix}A(p)&B(p)\\ C(p)&D(p)\end{bmatrix}"),
                  ("Polytope", r"S(p)=\sum_{r}w_r(p)\,S_r,\qquad w_r\geq 0,\qquad\sum_{r}w_r=1")], y=1.25, size=24, gap=0.95, label_w=1.9)
+    next(sh for sh in s.shapes if sh.shape_type == MSO_SHAPE_TYPE.PICTURE).top -= 29688     # Aditya's online nudge, 0.03 in up
     flow(d, s, ["Known model", "Sample on a grid", "HOSVD", "Drop small singular values", "Make weights convex"], 3.3)
     d.text(s, "Baranyi 2004, Method 4. It rewrites a model you obtain from sysID, so LMI design can use it.", 4.6, 0.6, size=24)
     add_latex(s, r"\mathrm{SysID:}\quad Y(t)=C\,[A,\ B]\,[\,x(t);\ u(t)\,]", LEFT + 0.1, 5.7, size=26)
@@ -334,7 +336,12 @@ def result_slides(d):
                "Gain = held-out one-step likelihood over GDAR, 5-fold. Separate fits match or beat rank 3, except on 12 bins with evoked left in.")
     notes(s, "Each model gets its own noise covariance when scored, Sigma = 0.99 Sigma-hat + 0.01 diag(Sigma-hat), so the fit doesn't quite optimise the score. Script 12. "
              "4 phases: evoked left in rank 3 +0.167, separate +0.180; evoked removed +0.259, +0.297. 12 time bins: left in +0.137, +0.098; removed +0.168, +0.173. Fold SE 0.008 to 0.013. "
-             "Numbers on 12 bins: GDAR 1,152, rank 3 3,483, separate 13,824. One monkey. No light in these fits, so they say nothing about the Jaws effects. "
+             "Numbers on 12 bins: GDAR 1,152, rank 3 3,483, separate 13,824. "
+             "Task time left out (evoked left in): each inner bin is left out of the fit in turn. Rank 3 reads its weights off its neighbours; 'fit on neighbour' is a separate fit on the nearest bin; 'fit on that bin' is a separate fit that did see that bin. "
+             "All are scored with GDAR's noise covariance, since a left-out bin has no residuals of its own. Over those bins, evoked left in / removed: rank 3 +0.122 / +0.110, neighbour +0.044 / +0.004, that bin +0.077 / +0.121; "
+             "rank 3 minus neighbour, per trial, +0.079 +/- 0.007 / +0.105 +/- 0.008. Given its own bin's covariance, which the others don't get, the neighbour fit reaches +0.089 / +0.082: below zero before go, +0.23 / +0.27 after it. "
+             "Corrected 2026-11-05 (L-2026-11-05-d): before, each fit had its own covariance and the neighbour fit looked worse than GDAR. "
+             "One monkey. No light in these fits, so they say nothing about the Jaws effects. "
              "The cleaned LFP has steps at 0 and 900 ms, not masked here; masking moved the gains little. They likely come from the artefact cleaning, which rejoins epochs at light on and off even on no-stim trials. "
              "On 11-12 the median jump is 23.5 uV at 0 ms and 13.9 at 900 ms in noart, against 2.5 typical, and raw lfp has none. To confirm with Noah.")
 
@@ -393,26 +400,6 @@ def system_slide(d):
 def control_slides(d):
     system_slide(d)
 
-    s = figure(d, "Step 1: learn it from data", "nine_learning",
-               "Random inputs at 7 values of p, 30 trials of 200 steps each. The truth is a mix of 2 operators, so 2 vertices here.")
-    edge_key(s, "edge; node = input gain")
-    notes(s, "Trials are grouped by p during learning, so p is known then. Median operator error over 20 plants, one unstable end: pooled 0.177, TP-GDAR 0.004. Largest input gain error, median: 0.003.")
-
-    s = d.slide("Step 2: one gain for every p")
-    native(s, "polytopic_explainer_hold", y=1.3, w=7.9, h=3.75, panel_flags={
-        "Energy over time": dict(no_xaxis=True, no_yaxis=True, title="Energy over time, p held at 1"),
-        "Energy change per step": dict(text_y={"vertex": 0.7, "with the gain": 0.57})})
-    y = add_latex(s, r"u=F\,\xi,\quad V=\xi^{\top}P\,\xi,\quad V(t+1)<\alpha^{2}\,V(t)\ \text{ at every vertex}", LEFT + 0.1, 5.2, size=20, max_w=7.7)
-    d.text(s, "No margin: the proof held on the true plant in 0 of 20 plants. With a margin (rate 0.9): 20 of 20.", y + 0.1, 0.8,
-           w=7.9, size=16, bullet=False)
-    x = LEFT + 8.1
-    d.text(s, ["Feedback: each input is a fixed mix of recent activity at all nodes",
-               "Energy measures how far the network is from rest",
-               "If energy shrinks at each vertex, it shrinks at every mix: any p, moving at any speed",
-               "The gain needs the fitted vertices, not p",
-               "Finding it is a convex problem (an LMI)",
-               "Tested on the true plant, never the fitted model"], 1.45, 5.5, x=x, w=13.333 - x - 0.3, size=17)
-
     s = d.slide("Polytopic control: the math")
     y = steps(d, s, [("Feedback", r"u=F\,\xi,\quad \xi(t)=[\,x(t);\ x(t-1)\,],\qquad \xi(t+1)=\Bigl(\sum_v\lambda_v(p)\,A_v+B_cF\Bigr)\,\xi(t)"),
                      ("At each vertex", r"(A_v+B_cF)^{\top}\,P\,(A_v+B_cF)\ \prec\ \alpha^{2}P"),
@@ -423,8 +410,6 @@ def control_slides(d):
                "The loop is closed on the true plant, never on the fitted model"], y + 0.15, 2.0, size=20)
     notes(s, "At rate 1 the fitted certificate held on the true plant in 0 of 20 plants, because the solution sits on the LMI's boundary. At rate 0.9 it held in 20 of 20, in both cases. "
              "A_v here is the companion form of vertex v and B_c the input matrix in that form.")
-
-    figure(d, "Both gains keep the network stable", "nine_control", panel_flags={"As p moves": dict(no_xaxis=True)})
 
     s = d.slide("Consensus: all 9 nodes follow one target")
     y = steps(d, s, [("Target", r"r(t)\ \text{ steps through } 0,\ +3,\ -3,\ +3,\ 0\text{, the same at every node}"),
@@ -445,13 +430,6 @@ def control_slides(d):
                "Left, no inputs: activity runs away. Right, one fixed gain: every node reaches the target. Held error about 0.33, set by the noise"],
            6.0, 1.3, size=16)
     notes(s, "One plant with both ends unstable, polytopic gain. Medians over 20 plants in the held windows: no control, stable at all p in 0 of 20, rms error 24.5. Polytopic, 20 of 20, rms error 0.338, rms input 1.97. Pooled LQR does this too, 20 of 20, rms error 0.333, rms input 1.94.")
-
-    s = d.slide("Here the vertices matter more than the LMI")
-    native(s, "nine_effort", y=1.3, bottom=5.15)
-    d.text(s, ["With an input at every node, pooled LQR stabilises everything too",
-               "The fitted vertices can certify either gain",
-               "The LMI reaches tighter rates (0.6: 40 of 40 plants, LQR 10 of 40) for less input. A few inputs is the real test"], 5.2, 2.0, size=20)
-    notes(s, "Synthetic, linear, full state, no delay or actuator limits. Median over 20 plants, polytopic at rate 0.9 vs pooled LQR: worst true eigenvalue 0.50 vs 0.53 (one unstable end), 0.51 vs 0.57 (two).")
 
 
 def build():

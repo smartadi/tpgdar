@@ -107,9 +107,10 @@ def gains_r3(R):
         sc.append({"name": lab, "x": t, "y": y, "color": col, "line": "solid", "marker": True, "width": 2.4})
     c.set_xlabel("ms from go")
     c.set_title("Task time left out")
-    real.tag(c, 330, 0.195, "TP rank 3", tc)
-    real.tag(c, 400, 0.04, "fit on that bin", tc)
-    real.tag(c, 330, -0.075, "fit on neighbour", tc)
+    # a key in the empty lower right, in the curves' order (rank 3 > that bin > neighbour in every bin since the Sigma fix)
+    for y, lab, col in ((-0.035, "TP rank 3", BLUE), (-0.075, "fit on that bin", GREEN), (-0.115, "fit on neighbour", GREY)):
+        real.tag(c, 420, y, lab, tc, color=col)
+        tc[-1]["color"] = col       # the slide draws a swatch of this colour beside the label
     for ax in (a, b, c):
         s12._zero(ax)
     a.set_ylim(*ylim)
