@@ -682,6 +682,15 @@ within a phase, with the same 200 ms window applied in frequency. Data and model
 | move | +0.97 | -3.57 | -1.79 | +0.38 | +0.59 |
 | post | +0.88 | +0.73 | -0.34 | +0.40 | +0.18 |
 
+**Same check with the rank 3 fit** (2026-11-05, now in `spectra_model.json` and on the slide; `cache/spectra_run.log`):
+
+| phase | r, 3-100 Hz | beta 13-30 data | model | high gamma 65-115 data | model |
+|---|---|---|---|---|---|
+| hold | +0.98 | +1.94 | +1.57 | -0.86 | -0.68 |
+| plan | +0.92 | +0.90 | +0.47 | +0.09 | -0.14 |
+| move | +0.98 | -3.57 | -1.92 | +0.38 | +0.56 |
+| post | +0.88 | +0.73 | -0.12 | +0.40 | +0.26 |
+
 **Found:** the task's low-frequency drop in movement is in the data on both days, and the fit reproduces its shape but only about half its size in
 move, with the wrong sign for beta in post. High gamma agrees within 0.25 dB. A frozen spectrum isn't the true spectrum of a changing system, and the
 model has no evoked input, so this is a check, not a test. **Limits:** the model check is one day; the target-onset step isn't masked, though raw `lfp`

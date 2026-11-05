@@ -8,7 +8,7 @@ Estimator, with the lab's spectrogram window (iosreach/scripts/session_report.py
   per channel, the trial-mean power, then dB, then the mean over channels
 A phase shorter than 200 ms on a trial contributes no window from that trial.
 
-Also: the fitted rank-2 family from cache/13 (evoked left in), as the spectrum of the AR model frozen at each bin, with
+Also: the fitted rank-3 family from cache/13 (evoked left in), as the spectrum of the AR model frozen at each bin, with
 the same 200 ms window applied in frequency so that data and model have the same resolution.  Both are shown relative
 to the mean of the four phases, in dB.  No model is fitted here.
 
@@ -159,10 +159,10 @@ def phase_figure(res, name):
 
 
 def model_spectra(f):
-    """(phases, freqs) dB, the frozen-bin AR spectrum of the rank-2 family, with the data's window applied in frequency."""
+    """(phases, freqs) dB, the frozen-bin AR spectrum of the rank-3 family, with the data's window applied in frequency."""
     with open(CACHE13, "rb") as fh:
         res = pickle.load(fh)["felix"]
-    model = res["full"][2]["model"]
+    model = res["full"][3]["model"]
     Sig = res["Sigma"]
     N = Sig.shape[0]
     nwin = int(round(WIN_MS / (1000.0 / s12.FS)))
