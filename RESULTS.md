@@ -740,3 +740,45 @@ result. It needs the channel map from Noah. The stim day may also differ for oth
 
 **The step is not what makes 08-23 agree.** With the steps masked on both days, 08-23 vs 11-12 goes from 0.47 to 0.44 (evoked removed)
 and 0.15 to 0.09 (left in). 11-12 masked against its unmasked self is r = 0.99.
+
+## Can the states be found on single trials? (`18_single_trial_states.py`) — 2026-11-05
+
+H 2021-11-12, the joint rank 3 fit at K = 16 on 16 warped bins (script 13's fold fit), vertices on the smallest enclosing triangle,
+5 folds over trials. On each held-out trial and at each time, the three weights are fitted to that trial's own data over a short
+window, constrained to the triangle (each >= 0, sum 1), using the fit's Sigma. No go or touch times and no bin labels are used.
+Approved by Aditya. Cells: evoked left in / evoked removed.
+
+**Weights read off the data predict better than the clock's.** One-step held-out gain over GDAR, all rows scored with GDAR's Sigma
+on the same 167,932 samples (from 120 ms into hold onward), fold SE in brackets:
+
+| weights | gain (nats/sample) | hold | plan | move | post |
+|---|---|---|---|---|---|
+| clock: bins from the trial's own go and touch | +0.156 (0.008) / +0.207 (0.009) | +0.165 / +0.458 | +0.047 / +0.102 | +0.200 / +0.183 | +0.205 / +0.168 |
+| fitted to the previous 30 ms | +0.171 (0.008) / +0.235 (0.008) | +0.157 / +0.448 | +0.016 / +0.118 | +0.264 / +0.260 | +0.231 / +0.184 |
+| fitted to the previous 60 ms | +0.193 (0.007) / +0.239 (0.007) | +0.180 / +0.467 | +0.052 / +0.088 | +0.277 / +0.274 | +0.249 / +0.202 |
+| fitted to the previous 120 ms | +0.195 (0.007) / +0.229 (0.007) | +0.186 / +0.476 | +0.058 / +0.045 | +0.278 / +0.273 | +0.246 / +0.199 |
+
+The weights use only samples before the one they predict. Most of the extra gain is in move. The clock row is lower than the
++0.214 / +0.313 of the sum-to-one model in the review checks above because every row here uses GDAR's Sigma, not its own.
+
+**But the states they find are locked to the target, not to the go cue.**
+- Go time, read off each trial's weights by matching the training trials' go-aligned mean: r = +0.01 to +0.04 with the true go time
+  (permutation p 0.21 to 0.41). The median error is 81 to 89 ms, no better than guessing the training median (79 ms).
+- Touch: r = +0.29, +0.32, +0.43 for 30, 60, 120 ms windows (p 0.0001, 298 trials with touch by 1135 ms). The median error is 61 to
+  79 ms against 68 for the median guess. Movement time (touch less go) isn't recovered: r = -0.07 to +0.02.
+- Split by go time into thirds (mean go 302, 401, 517 ms), the move vertex comes on 150 to 400 ms after the target and reaches about
+  0.8 at the same time in all three (figure, panel D). The clock weights put that rise just before go only because the bins are
+  warped to go.
+- Per-trial correlation with the clock's weights is 0.73 / 0.77 (30 ms) to 0.86 / 0.86 (120 ms). A clock built from the median go and
+  touch, which knows nothing about the trial, does nearly as well: 0.72 to 0.85 / 0.77 to 0.87. Evoked left in, the trial's own clock
+  is higher on 54 to 56% of trials (Wilcoxon p 2e-4 to 6e-4). Evoked removed, it isn't (46 to 47%).
+
+**The triangle is tight for single trials.** On 47 to 58% of samples one weight sits at 0 (on an edge), and on 1 to 8% two do (at a
+corner), more often with shorter windows. Single-trial data often wants to leave the triangle fitted to bin averages.
+
+**Caveats.**
+- The weights adapt within each trial. Part of their gain may come from any trial-by-trial adjustment, not from task states. A control
+  (for example, one past-window gain on GDAR's prediction) would separate the two. It isn't run, and it needs approval.
+- Evoked left in, the target-locked rise may be the target's evoked response. Evoked removed, the timing test wasn't run: its kernels
+  are placed at each trial's own go and touch, so the timing would leak in.
+- One day, one monkey, rank 3 only.
