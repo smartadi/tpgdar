@@ -132,5 +132,8 @@ def test_this_sessions_real_transcript_parses():
     found = sorted(folder.glob("*.jsonl"), key=lambda p: p.stat().st_mtime)
     if not found:
         pytest.skip("no local transcripts on this PC")
-    turns = gate.conversation(found[-1])
-    assert any(role == "user" for role, _ in turns) and any(role == "assistant" for role, _ in turns)
+    # The newest file can be the live session before Claude has written any chat text (only tool calls),
+    # so ask that one of the recent transcripts parses into both roles, not the newest alone.
+    parsed = [gate.conversation(path) for path in found[-5:]]
+    assert any(any(role == "user" for role, _ in turns) and any(role == "assistant" for role, _ in turns)
+               for turns in parsed)
