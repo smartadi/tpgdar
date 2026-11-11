@@ -1,0 +1,16 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python -I 'C:\\Users\\aditya\\Documents\\projects\\tpgdar\\.codex\\hooks\\method_gate.py'",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}
