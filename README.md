@@ -11,7 +11,7 @@ on the real OS-Pulse ECoG (`scripts/10_*`, `scripts/11_*`).
 
 ## Model
 
-**Full math and the learning procedure: [`docs/MODEL.md`](docs/MODEL.md).** In short,
+**Full math, as the code runs it, with what Aditya has approved: [`docs/MATH.md`](docs/MATH.md).** In short,
 the lag matrices and input matrices form **one stacked operator**, and the TP
 structure lives on that operator along the p mode only:
 
@@ -29,7 +29,7 @@ sufficient statistics). The older two-stage route (per-condition fits, then an
 unweighted HOSVD) minimises the wrong distance and is kept only as a baseline;
 see `RESULTS.md` § Stacked TP-GDAR.
 
-**Data rules that change the answer if broken.** These are in `docs/MODEL.md` §5:
+**Data rules that change the answer if broken.** These are in `docs/MATH.md` §1:
 - never fit across trial boundaries;
 - never z-score per condition;
 - u(t) drives x(t+1);
@@ -97,7 +97,7 @@ gdar_tp/
     wilson_cowan.py  WC oscillator network on a graph, p-varying coupling + stim
     closed_loop.py   controller-on-plant loop with delay, noise, actuator limits
 scripts/  01..11  (03 is a stub; 09 is superseded, see RESULTS.md; 10-11 real OS-Pulse)
-docs/     MODEL.md (the math), PLAN.md (original staging)
+docs/     MATH.md (the math), PLAN.md (original staging); MODEL.md now points to MATH.md
 tests/            graph / gdar / tp / tpgdar / latent / control / closed_loop / review fixes
 ```
 
