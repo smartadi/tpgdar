@@ -782,3 +782,60 @@ corner), more often with shorter windows. Single-trial data often wants to leave
 - Evoked left in, the target-locked rise may be the target's evoked response. Evoked removed, the timing test wasn't run: its kernels
   are placed at each trial's own go and touch, so the timing would leak in.
 - One day, one monkey, rank 3 only.
+
+## Vertex form fitted directly (`19_vertex_form_ios.py`), 2026-11-21
+
+Method: MATH §9.5, approved by Aditya 2026-11-21. The weights sit on the simplex inside the fit, so the vertices describe the
+model that is scored, and a penalty μ n Σ_v ‖φ_v − φ̄‖²_H̄ pulls the vertices together. Each vertex fit starts from the convex
+form of the free fit of the same fold. μ is chosen from {0, 0.001, 0.01, 0.1, 1} inside each training set (fit on 3 of the 4
+training folds, validate on the fourth). H 2021-11-12, 16 warped bins, K = 16, 5 folds, scored as script 13 (each model its
+own Sigma). Cells: evoked left in / evoked removed. Source: `cache/19_run.log`.
+
+**Held-out gain over GDAR,** nats/sample, fold SE in brackets:
+
+| fit | rank 2 | rank 3 |
+|---|---|---|
+| free weights | +0.1898 (0.0086) / +0.2475 (0.0121) | +0.2222 (0.0090) / +0.3233 (0.0127) |
+| convex form of the free fit | +0.1416 (0.0055) / +0.2239 (0.0114) | +0.2144 (0.0087) / +0.3130 (0.0126) |
+| vertex form, μ = 0 | +0.1745 (0.0077) / +0.2435 (0.0123) | +0.2214 (0.0093) / +0.3185 (0.0130) |
+| vertex form, μ = 0.001 | +0.1745 (0.0077) / +0.2436 (0.0122) | +0.2217 (0.0092) / +0.3188 (0.0129) |
+| vertex form, μ = 0.01 | +0.1740 (0.0071) / +0.2435 (0.0116) | +0.2201 (0.0087) / +0.3179 (0.0121) |
+| vertex form, μ = 0.1 | +0.1595 (0.0045) / +0.2268 (0.0084) | +0.1898 (0.0053) / +0.2816 (0.0085) |
+| vertex form, μ = 1 | +0.0750 (0.0006) / +0.1057 (0.0024) | +0.0811 (0.0010) / +0.1178 (0.0025) |
+| vertex form, μ chosen in training | +0.1746 (0.0074) / +0.2439 (0.0119) | +0.2213 (0.0091) / +0.3188 (0.0127) |
+
+- In all four columns the vertex form with μ chosen in training scored between the convex form and the free fit.
+- μ chosen by fold: rank 2, 0, 0.01, 0.01, 0.01, 0 (both variants); rank 3, 0.001, 0.01, 0.01, 0.01, 0.001 (evoked left in) and
+  0.001, 0.01, 0.01, 0.001, 0.001 (removed).
+
+**Where the vertices sit.** Distance of each vertex from the nearest bin, as a fraction of the bins' spread, median / max over
+folds and vertices:
+
+| fit | rank 2 | rank 3 |
+|---|---|---|
+| convex form of the free fit | 0.00 / 0.00 and 0.00 / 0.00 | 0.18 / 1.19 and 0.11 / 0.48 |
+| vertex form, μ = 0 | 0.04 / 0.18 and 0.00 / 0.06 | 0.24 / 1.23 and 0.20 / 0.48 |
+| vertex form, μ = 0.001 | 0.02 / 0.12 and 0.00 / 0.04 | 0.25 / 0.75 and 0.13 / 0.39 |
+| vertex form, μ = 0.01 | 0.00 / 0.00 and 0.00 / 0.00 | 0.14 / 0.28 and 0.01 / 0.05 |
+| vertex form, μ = 0.1 or 1 | 0.00 / 0.00 and 0.00 / 0.00 | 0.00 / 0.00 and 0.00 / 0.00 |
+
+- Full-data rank 3 fit, evoked left in, μ = 0.01: the convex form puts its three vertices at 0.0, 1.01 and 0.16 from the
+  nearest bin; the vertex form at 0.0, 0.23 and 0.14. Evoked removed, μ = 0.001: 0.12, 0.0, 0.35 against 0.11, 0.02, 0.29.
+- Every vertex is stable: the largest spectral radius is 0.983 (rank 3, μ = 0, evoked removed).
+
+**Synthetic check (script 15's plants, V = 2, 20 plants, `cache/19_synthetic.log`).** Median vertex error relative to the truth:
+
+| fit | one unstable bin | two unstable bins |
+|---|---|---|
+| convex form of the free fit | 0.0048 | 0.0048 |
+| vertex form, μ = 0 | 0.0048 | 0.0048 |
+| vertex form, μ = 0.001 | 0.1095 | 0.1845 |
+| vertex form, μ = 0.01 | 0.1284 | 0.2357 |
+
+**Caveats.**
+- On the synthetic plants the penalty moved the vertices away from the truth. The penalty measures vertex spread in one pooled
+  metric, and those plants have bins of very different energy; whether that is the reason is not tested. On real data there is
+  no truth to compare with, so a vertex pulled in by μ may be biased toward the data's centre.
+- At rank 3 with μ = 0.01 the far vertex moves in (max 1.19 to 0.28, evoked left in) at a gain of +0.2201 against +0.2144 for
+  the convex form. Whether the vertex form replaces the free fit in the reported tables is MATH §14 question 1.
+- One day, ranks 2 and 3 only. Script 19 takes about 11 min.

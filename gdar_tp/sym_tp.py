@@ -273,3 +273,123 @@ def fit_sym_tp(stats, R, Sigma, r, p_grid, n_iter=60, tol=1e-7, jitter=1e-10, st
     runs = [alternate(*makers[s]()) for s in starts]
     W, phi, obj = min(runs, key=lambda run: run[2][-1])
     return SymTP(W=W, phi=phi, R=R, N=N, p_grid=np.asarray(p_grid, float), objective=obj)
+
+
+# ------------------------------------------------------------------ vertex form (MATH §9.5)
+@dataclass
+class VertexTP(SymTP):
+    """TP-GDAR in vertex form: ``W`` holds the convex weights lam (P, V), each row on the simplex; ``phi`` the vertices.
+
+    ``objective`` is the penalised objective per sweep; ``data_loss`` and ``penalty`` its two parts at the end.
+    """
+
+    mu: float = 0.0
+    data_loss: float = np.nan
+    penalty: float = np.nan
+
+    @property
+    def n_params(self):
+        """Free numbers: V vertex operators plus V - 1 weights per bin (no gauge left but the vertex order)."""
+        P, V = self.W.shape
+        return V * self.phi.shape[1] + P * (V - 1)
+
+
+def simplex_qp(Q, b):
+    """``argmin_{lam >= 0, sum lam = 1}  lam' Q lam - 2 b' lam`` for a small positive semidefinite ``Q (V, V)``.
+
+    Exact by enumerating the faces of the simplex: the minimum of a convex quadratic over the simplex is the minimiser
+    over the affine hull of some face, lying in that face.  For each support S the equality-constrained problem is
+    solved through its KKT system; infeasible solutions are dropped and the best feasible one is returned.  2^V - 1
+    small solves, so V is kept small.  MATH §9.5.
+    """
+    from itertools import combinations
+
+    Q = np.asarray(Q, float)
+    b = np.asarray(b, float)
+    V = len(b)
+    if V > 8:
+        raise ValueError("simplex_qp enumerates 2^V faces; V > 8 is not supported")
+    best, best_obj = None, np.inf
+    for size in range(1, V + 1):
+        for S in combinations(range(V), size):
+            S = list(S)
+            if size == 1:
+                lam_S = np.ones(1)
+            else:
+                M = np.zeros((size + 1, size + 1))
+                M[:size, :size] = Q[np.ix_(S, S)]
+                M[:size, size] = 1.0
+                M[size, :size] = 1.0
+                lam_S = np.linalg.lstsq(M, np.r_[b[S], 1.0], rcond=None)[0][:size]
+                if np.any(lam_S < -1e-12):
+                    continue
+                lam_S = np.clip(lam_S, 0.0, None)
+                lam_S = lam_S / lam_S.sum()
+            lam = np.zeros(V)
+            lam[S] = lam_S
+            obj = lam @ Q @ lam - 2 * b @ lam
+            if obj < best_obj:
+                best, best_obj = lam, obj
+    return best
+
+
+def fit_sym_tp_vertex(stats, R, Sigma, V, p_grid, mu=0.0, start=None, n_iter=200, tol=1e-7, jitter=1e-10, quads=None):
+    """TP-GDAR fitted in vertex form, with the convex weights inside the fit.  MATH §9.5, approved by Aditya 2026-11-21.
+
+        min  J = sum_g L_g( sum_v lam[g, v] phi_v ) + mu n sum_v || phi_v - phibar ||^2_Hbar,    lam[g] >= 0, sum_v lam[g, v] = 1
+
+    L_g(phi) = phi' H_g phi - 2 phi' h_g is bin g's GLS loss with ``Sigma`` fixed (as in :func:`fit_sym_tp`),
+    Hbar = sum_g H_g / n the pooled data metric per sample, n the number of targets, phibar the mean vertex.
+
+    Alternates two exact block solves, so J never increases:
+      lam-step  per bin, ``simplex_qp(Phi H_g Phi', Phi h_g)``
+      phi-step  ( sum_g lam_g lam_g' kron H_g + mu n (I - 11'/V) kron Hbar ) vec Phi = sum_g lam_g kron h_g
+
+    With mu = 0 any simplex containing the fitted family fits equally well, so the vertices stay where the start
+    put them; mu > 0 pulls them together as far as the data allow.  ``start`` is (lam (P, V), phi (V, n_phi)); by
+    default the convex form (:func:`polytope_vertices`) of the free rank-V fit.  V = 1 is the pooled GLS fit (GDAR).
+    """
+    P = len(stats["n"])
+    N = stats["Syy"].shape[1]
+    Hs, hs = gls_quads(stats, R, Sigma) if quads is None else quads
+    n = float(np.sum(stats["n"]))
+    Hsum = Hs.sum(0)                                   # = n Hbar
+    C = np.eye(V) - 1.0 / V                            # centring: sum_v ||phi_v - phibar||^2_M = tr(C Phi M Phi')
+
+    if start is not None:
+        lam, phi = (np.array(a, dtype=float) for a in start)
+    elif V == 1:
+        lam, phi = np.ones((P, 1)), _solve(Hsum, hs.sum(0), jitter)[None]
+    else:
+        free = fit_sym_tp(stats, R, Sigma, V, p_grid, jitter=jitter, quads=(Hs, hs))
+        poly = polytope_vertices(free, Hsum / n)
+        lam, phi = poly["lam"], poly["phi"]
+
+    def parts(lam, phi):
+        data = 0.0
+        for g in range(P):
+            f = lam[g] @ phi
+            data += f @ Hs[g] @ f - 2 * f @ hs[g]
+        return float(data), float(mu * np.trace(C @ phi @ Hsum @ phi.T))
+
+    obj = [sum(parts(lam, phi))]
+    n_phi = phi.shape[1]
+    for _ in range(n_iter):
+        for g in range(P):                                         # lam-step, exact per bin
+            Q, b = phi @ Hs[g] @ phi.T, phi @ hs[g]
+            new = simplex_qp(Q, b)
+            if new @ Q @ new - 2 * b @ new <= lam[g] @ Q @ lam[g] - 2 * b @ lam[g]:
+                lam[g] = new
+        A = np.zeros((V * n_phi, V * n_phi))                       # phi-step, one linear solve
+        for j in range(V):
+            for k in range(j, V):
+                block = np.tensordot(lam[:, j] * lam[:, k], Hs, axes=1) + mu * C[j, k] * Hsum
+                A[j * n_phi:(j + 1) * n_phi, k * n_phi:(k + 1) * n_phi] = block
+                A[k * n_phi:(k + 1) * n_phi, j * n_phi:(j + 1) * n_phi] = block
+        phi = _solve(A, (lam.T @ hs).ravel(), jitter).reshape(V, n_phi)
+        obj.append(sum(parts(lam, phi)))
+        if abs(obj[-2] - obj[-1]) <= tol * abs(obj[-1]):
+            break
+    data, pen = parts(lam, phi)
+    return VertexTP(W=lam, phi=phi, R=R, N=N, p_grid=np.asarray(p_grid, float), objective=np.array(obj),
+                    mu=float(mu), data_loss=data, penalty=pen)

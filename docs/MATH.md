@@ -392,6 +392,70 @@ points inside the polytope; for points outside, the reported miss depends on the
 
 **Status:** not yet approved (written 2026-11-04, before the gate).
 
+### 9.5 Vertex form, fitted directly (`sym_tp.py: fit_sym_tp_vertex, simplex_qp`)
+
+Added 2026-11-21. The convex form is built into the fit, so the vertices describe the model that is scored. `fit_sym_tp`
+(§6) and `polytope_vertices` (§9.1 to §9.4) are unchanged.
+
+```
+Θ(p_g) = Σ_{v=1..V} λ_gv Θ_v,      λ_g ∈ Δ_V = { λ : λ_v ≥ 0, Σ_v λ_v = 1 }
+
+J(Λ, Φ) = Σ_g L_g( Σ_v λ_gv φ_v )  +  μ n Σ_v ‖φ_v − φ̄‖²_H̄
+```
+
+| symbol | meaning |
+|---|---|
+| v = 1..V | vertices (V = 2, 3 in script 19) |
+| Θ_v = Θ(φ_v) | vertex operator, symmetric and graph-supported (§4.1) |
+| λ_gv, Λ | weight of vertex v in bin g; Λ = [λ_gv] (stored in `W`) |
+| Φ = [φ_1; …; φ_V] | the vertices |
+| L_g | bin g's GLS loss with Σ fixed from the GDAR fit, as in §6.1 |
+| φ̄ = (1/V) Σ_v φ_v | mean vertex |
+| H̄ = Σ_g H_g / n | pooled data metric per sample (§9.2); ‖φ‖²_H̄ = φᵀH̄φ |
+| n | number of training targets, so μ is a per-sample weight with no units |
+| μ ≥ 0 | penalty weight |
+
+Σ_v ‖φ_v − φ̄‖²_H̄ = (1/V) Σ_{v<w} ‖φ_v − φ_w‖²_H̄: the penalty is the summed squared distance between vertices, in how
+differently they predict.
+
+**Steps,** each an exact block minimiser, so J never increases:
+
+```
+λ-step, each bin:  λ_g = argmin_{λ ∈ Δ_V}  λᵀ (Φ H_g Φᵀ) λ − 2 λᵀ Φ h_g
+Φ-step:            ( Σ_g λ_g λ_gᵀ ⊗ H_g + μ n (I_V − 11ᵀ/V) ⊗ H̄ ) vec Φ = Σ_g λ_g ⊗ h_g
+```
+
+The λ-step is solved exactly by enumerating the faces of the simplex (`simplex_qp`): for each support S, the KKT system of the
+problem restricted to S with Σλ = 1; infeasible solutions are dropped and the best feasible one kept (2^V − 1 small solves). A
+new λ_g is kept only if it lowers the bin's objective. The Φ-step uses the §4.2 jitter.
+
+**Start:** the convex form of the free rank-V fit (§9.1 to §9.3). **Stop:** |ΔJ| ≤ 10⁻⁷ |J| or n_iter sweeps (100 in script 19).
+
+**Properties.** V = 1 is GDAR. At μ = 0 the vertex form spans the same models as a sum-to-one family: any simplex that contains the
+fitted bins gives the same loss, so the vertices stay where the start put them. μ > 0 breaks that tie by pulling the vertices
+together as far as the data allow, which keeps every vertex near states the data visit (Aditya's "one vertex does not dominate",
+read as: no vertex far outside the data). At V = 2 and small μ the vertices are the two end bins, as in §9.3. With finite μ the
+penalty also shrinks the bins at the ends slightly toward the centre. At μ = 0 the training data loss satisfies
+free rank-V fit ≤ vertex form ≤ convex form of the free fit (the free family contains the vertex family; the vertex form starts at
+the convex form).
+
+**μ in script 19:** chosen from {0, 10⁻³, 10⁻², 10⁻¹, 1} by held-out likelihood inside each training set (fit on 3 of the 4
+training folds, validate on fold f + 1 mod 5; for evoked removed the kernels are refitted on those 3 folds). Scored as §8.
+
+**Checks** (`tests/test_sym_tp_vertex.py`): `simplex_qp` against SLSQP (V = 2, 3, 4, singular Q included) and a fine grid (V = 3);
+V = 1 equals the GLS fit; J never increases and the weights stay on the simplex; zero gradient in Φ at the end; the data-loss
+ordering above; the vertex spread falls as μ rises; recovery of a known two-vertex plant.
+
+**First results** (`RESULTS.md`, script 19 section; L-2026-11-21-c). On script 15's synthetic plants (V = 2), μ = 10⁻³ and 10⁻²
+moved the vertices away from the truth: median vertex error 0.1095 to 0.2357 against 0.0048 at μ = 0 (`cache/19_synthetic.log`).
+The penalty measures spread in one pooled metric H̄, so it can bias the vertices when bins differ widely in energy, as in those
+plants; that this is the cause is not tested. On H 2021-11-12 the training folds chose μ = 0 to 10⁻², and the vertex form scored
+between the convex form and the free fit at ranks 2 and 3 (`cache/19_run.log`).
+
+**Status:** Approved by Aditya 2026-11-21: "Approve" (gate block: "fit TP-GDAR in vertex form, with the weights on the simplex
+inside the fit and a penalty on how far apart the vertices are"). The gate missed that reply at first because of an app note in
+front of it; fixed in L-2026-11-21-b.
+
 ## 10. Single-trial weights (`scripts/18_single_trial_states.py`)
 
 The rank 3 fold fit (§6, 25 sweeps) and its vertices (§9) are fixed. Fold vertices are put in the order of script 13's full-data
@@ -512,7 +576,8 @@ transcripts stamp UTC. No research-log entry has the `Math approved by Aditya` l
 | 7 | baselines | not yet approved | | | | L-2026-11-04-l |
 | 8.6 | GDAR's Σ for every leave-one-bin-out row | approved | 2026-11-05 | "Approve" | "which Σ scores the leave-one-bin-out rows in `scripts/12_tp_vs_gdar_ios.py`" | L-2026-11-05-d |
 | 8 (rest) | likelihood, 1% shrink, folds, K, SEs | not yet approved | | | | L-2026-11-02-a |
-| 9 | convex form and vertices | not yet approved | | | | L-2026-11-04-a |
+| 9.1 to 9.4 | convex form of the free fit and its vertices | not yet approved | | | | L-2026-11-04-a |
+| 9.5 | vertex form fitted directly, spread penalty, μ chosen inside training folds | approved | 2026-11-21 | "Approve" | "fit TP-GDAR in vertex form, with the weights on the simplex inside the fit and a penalty on how far apart the vertices are" | L-2026-11-21-c |
 | 10 | single-trial weights and tests | approved | 2026-11-05 | "Approve" (twice) | "how to tell whether the rank 3 states can be found on a single trial"; "how to test whether the rank 3 states can be found on a single held-out trial, without the task clock" | L-2026-11-05-f |
 | 11.3 | data spectrum by phase | approved | 2026-11-05 | "Approve" | "not a model-fit change, in my view: this is how to compute the per-phase spectrum for the slides, and nothing gets fitted" | L-2026-11-05-a |
 | 11 (rest) | model spectrum, radius, edge maps, VAF, reliability | not yet approved | | | | L-2026-11-02-a |
@@ -528,9 +593,12 @@ Each needs Aditya's decision through the gate. The current method is listed firs
 
 1. **Which model is "the" model.** The free-weight fit W Φ is scored; the sum-to-one family W_a Φ is plotted and would feed an LMI
    (§9.1). Options: report both; fit with sum-to-one as a constraint inside the joint fit; project in a gauge-invariant way.
+   *2026-11-21: Aditya approved fitting in vertex form (§9.5). Whether it replaces the free fit in the reported tables is open.*
 2. **One Σ rule for every table** (§8.2): own Σ per model, or GDAR's Σ for all.
 3. **The rank 3 vertex rule** (§9.3): the hull-edge triangle; the true minimum-area enclosing triangle; or vertices chosen under
    graph constraints so that no vertex dominates, keeping the convex hull (Aditya's next ask, 2026-11-05).
+   *2026-11-21: §9.5's spread penalty is the first such rule ("dominate" read as a vertex far outside the data). Bounds on each
+   vertex's edge strengths remain a possible later constraint.*
 4. **Gauge** (§6.4): unit-RMS columns or orthonormal columns. It matters only through §9.1.
 5. **K = 16 at the top of the CV grid** (§8.4); GDAR's held-out ℓ still rises at K = 32.
 6. **The 1% shrink of the scoring Σ** (§8.2).
