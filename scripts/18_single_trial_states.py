@@ -1,9 +1,10 @@
 r"""Can the rank 3 states be found on a single held-out trial, without the task clock?  H 2021-11-12, no stim.
 
 Method approved by Aditya on 2026-11-05.  The fit is script 13's fold fit, unchanged: the joint rank-3 TP-GDAR at K = 16
-on the 16 warped bins (hold, plan, move, post, 4 each), fitted on 4 of the 5 folds, put in convex form on the smallest
-enclosing triangle (weights >= 0, sum 1).  Then, on every trial and at every time t, the weights are estimated from that
-trial's own data, with no go or touch time and no bin label:
+on the 16 warped bins (hold, plan, move, post, 4 each), fitted on 4 of the 5 folds, written exactly in convex form on
+4 vertices: the smallest regular simplex around the bins, tau = 1 (MATH §9.6, approved by Aditya 2026-11-22; before
+that, 3 vertices on the hull-edge triangle after a sum-to-one projection).  Then, on every trial and at every time t,
+the weights are estimated from that trial's own data, with no go or touch time and no bin label:
 
     lam_hat(t) = argmin_{lam >= 0, sum lam = 1}  sum_{s in window}  || x(s+1) - sum_v lam_v Theta_v z(s) ||^2_{Sigma^-1}
 
@@ -44,11 +45,12 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 s12 = importlib.import_module("12_tp_vs_gdar_ios")
 s12b = importlib.import_module("12b_tp_vs_gdar_robust")
 s13 = importlib.import_module("13_tp_vertices_ios")
-from gdar_tp.sym_tp import _quad, fit_gls_pooled, fit_sym_tp, polytope_vertices, symmetric_basis, theta_of  # noqa: E402
+from gdar_tp.sym_tp import _quad, fit_gls_pooled, fit_sym_tp, regular_hull, symmetric_basis, theta_of  # noqa: E402
 
 K = s13.K
 P = 4 * s13.NSUB
 RANK = 3
+NV = RANK + 1                           # vertices of the regular hull
 WINDOWS = (10, 20, 40)                  # samples of 3 ms
 DT = 1000.0 / s12.FS
 TAU = np.arange(-200.0, 300.0, DT)      # template, ms about the event
@@ -62,40 +64,46 @@ log = s12.log
 
 # ------------------------------------------------------------------------------ the weight step on one window
 def simplex_qp(Q, b):
-    """``argmin lam' Q lam - 2 b' lam`` over the simplex, for stacks ``Q (..., 3, 3)``, ``b (..., 3)``.
+    """``argmin lam' Q lam - 2 b' lam`` over the simplex, for stacks ``Q (..., V, V)``, ``b (..., V)``.
 
-    Exact for three vertices: the optimum is the best of the three edges (each a 1-D problem, clipped, which covers
-    the corners) and the interior KKT point where that point is feasible."""
+    Exact for any small V, by the face enumeration of ``gdar_tp.sym_tp.simplex_qp`` done on the whole stack: every
+    corner, and for every larger face the equality-constrained minimiser from its KKT system where it is feasible;
+    the best one wins.  (Until 2026-11-22 this was a 3-vertex version: three clipped edges and the interior point.)"""
+    from itertools import combinations
+
+    V = b.shape[-1]
+
     def obj(lam):
         return np.einsum("...i,...ij,...j->...", lam, Q, lam) - 2 * np.einsum("...i,...i->...", b, lam)
 
     best, best_obj = None, None
-    for v, w in ((0, 1), (0, 2), (1, 2)):
-        den = Q[..., v, v] - 2 * Q[..., v, w] + Q[..., w, w]
-        num = Q[..., w, w] - Q[..., v, w] + b[..., v] - b[..., w]
-        x = np.where(den > 0, num / np.where(den > 0, den, 1.0), np.where(num > 0, 1.0, 0.0))
-        x = np.clip(x, 0.0, 1.0)
-        lam = np.zeros(b.shape)
-        lam[..., v], lam[..., w] = x, 1 - x
-        o = obj(lam)
-        if best is None:
-            best, best_obj = lam, o
-        else:
-            m = o < best_obj
-            best[m], best_obj[m] = lam[m], o[m]
-    M = np.zeros(Q.shape[:-2] + (4, 4))
-    M[..., :3, :3] = Q
-    M[..., :3, 3] = 1.0
-    M[..., 3, :3] = 1.0
-    rhs = np.concatenate([b, np.ones(b.shape[:-1] + (1,))], -1)[..., None]
-    try:
-        sol = np.linalg.solve(M, rhs)[..., 0]
-    except np.linalg.LinAlgError:
-        sol = (np.linalg.pinv(M) @ rhs)[..., 0]
-    lam = sol[..., :3]
-    o = obj(lam)
-    m = np.all(lam >= 0, -1) & (o < best_obj)
-    best[m] = lam[m]
+    for size in range(1, V + 1):
+        for S in combinations(range(V), size):
+            S = list(S)
+            lam = np.zeros(b.shape)
+            if size == 1:
+                lam[..., S[0]] = 1.0
+                ok = np.ones(b.shape[:-1], bool)
+            else:
+                M = np.zeros(Q.shape[:-2] + (size + 1, size + 1))
+                M[..., :size, :size] = Q[..., S, :][..., :, S]
+                M[..., :size, size] = 1.0
+                M[..., size, :size] = 1.0
+                rhs = np.concatenate([b[..., S], np.ones(b.shape[:-1] + (1,))], -1)[..., None]
+                try:
+                    sol = np.linalg.solve(M, rhs)[..., 0]
+                except np.linalg.LinAlgError:
+                    sol = (np.linalg.pinv(M) @ rhs)[..., 0]
+                lS = sol[..., :size]
+                ok = np.all(np.isfinite(lS), -1) & np.all(lS >= -1e-12, -1)
+                lS = np.clip(np.nan_to_num(lS), 0.0, None)
+                lam[..., S] = lS / np.maximum(lS.sum(-1, keepdims=True), 1e-300)
+            o = obj(lam)
+            if best is None:
+                best, best_obj = lam, o
+            else:
+                m = ok & (o < best_obj)
+                best[m], best_obj[m] = lam[m], o[m]
     return best
 
 
@@ -113,7 +121,7 @@ def window_sums(A, W, causal):
 def lam_hat(Q, b, W, causal):
     Qw, ok = window_sums(Q, W, causal)
     bw, _ = window_sums(b, W, causal)
-    Qw[:, ~ok] = np.eye(3)
+    Qw[:, ~ok] = np.eye(Qw.shape[-1])
     bw[:, ~ok] = 0.0
     lam = simplex_qp(Qw, bw)
     lam[:, ~ok] = np.nan
@@ -127,9 +135,9 @@ def whitener(S):
 
 def align(lam, ref):
     """Vertex order of a fold fit that best matches the full-data fit's 16-bin weights, and the mean correlation."""
-    best = max(permutations(range(RANK)),
-               key=lambda p: sum(np.corrcoef(lam[:, p[v]], ref[:, v])[0, 1] for v in range(RANK)))
-    return list(best), float(np.mean([np.corrcoef(lam[:, best[v]], ref[:, v])[0, 1] for v in range(RANK)]))
+    best = max(permutations(range(NV)),
+               key=lambda p: sum(np.corrcoef(lam[:, p[v]], ref[:, v])[0, 1] for v in range(NV)))
+    return list(best), float(np.mean([np.corrcoef(lam[:, best[v]], ref[:, v])[0, 1] for v in range(NV)]))
 
 
 def at(h, times, t0):
@@ -178,7 +186,7 @@ def fold_job(job):
     phi0, Sf = fit_gls_pooled(a["Gzz"], a["Gzy"], a["Syy"], a["n"], R)
     Hbar = _quad(a["Gzz"], a["Gzy"], R, np.linalg.pinv(Sf))[0] / a["n"]
     model = fit_sym_tp(tr, R, Sf, RANK, np.arange(float(P)), n_iter=25)
-    poly = polytope_vertices(model, Hbar)
+    poly = regular_hull(model, Hbar)
     perm, match = align(poly["lam"], ref)
     lam_bins = poly["lam"][:, perm]
     Th0 = theta_of(phi0, R, N)
@@ -188,12 +196,12 @@ def fold_job(job):
     ts = np.arange(s12b.K0 - 1, T - 1)
     tt = t[ts + 1]                                      # time of each target x(s+1)
     Y = X[:, ts + 1]
-    U = np.zeros((n, len(ts), RANK + 1, N))             # GDAR, then the vertices
+    U = np.zeros((n, len(ts), NV + 1, N))               # GDAR, then the vertices
     for k in range(K):
         Xk = X[:, ts - k]
         blk = slice(k * N, (k + 1) * N)
         U[:, :, 0] += Xk @ Th0[:, blk].T
-        for v in range(RANK):
+        for v in range(NV):
             U[:, :, v + 1] += Xk @ Th[v][:, blk].T
     Wf, Ws = whitener(Sf), whitener(Ss)
     Uf, Yf = U[:, :, 1:] @ Wf, Y @ Wf                   # metric of the fit, for the weights
@@ -340,7 +348,7 @@ def plot():
     move_v = int(np.argmax(F["ref"][2 * s13.NSUB:3 * s13.NSUB].mean(0)))
 
     fig = plt.figure(figsize=(14, 11.5), constrained_layout=True)
-    fig.suptitle(f"Rank 3 weights on single held-out trials, read off {W * DT:.0f} ms of data with no task clock "
+    fig.suptitle(f"Rank 3 weights (4 vertices) on single held-out trials, read off {W * DT:.0f} ms of data with no task clock "
                  "(H 2021-11-12, evoked left in unless marked)", fontsize=11, fontweight="bold", x=0.01, ha="left")
     rows = fig.subfigures(3, 1, height_ratios=[1, 1, 1])
     ex = rows[0].subplots(1, 3, sharey=True)
@@ -348,7 +356,7 @@ def plot():
     for ax, q, name in zip(ex, (0.1, 0.5, 0.9), ("early", "median", "late")):
         k = order[int(q * (len(te) - 1))]
         i = te[k]
-        for v in range(RANK):
+        for v in range(NV):
             ax.plot(tt, hat[k][:, v], color=col[v], lw=1.3, label=f"vertex {v + 1}")
             ax.plot(tt, clock[k][:, v], color=col[v], lw=1.6, ls="--")
         for x, lab in ((0, "target"), (go[i], "go"), (touch[i], "touch")):
@@ -359,7 +367,7 @@ def plot():
         ax.set_xlabel("ms from target on")
         ax.set_title(f"A  Trial {i}: go {go[i]:.0f} ms", loc="left")
     ex[0].set_ylabel("weight (solid: from data; dashed: clock)")
-    ex[2].legend(loc="lower right", bbox_to_anchor=(1, 1.0), ncol=3, fontsize=8, frameon=False, borderaxespad=0.2,
+    ex[2].legend(loc="lower right", bbox_to_anchor=(1, 1.0), ncol=NV, fontsize=8, frameon=False, borderaxespad=0.2,
                  handlelength=1.2, columnspacing=0.8)
 
     mid = rows[1].subplots(1, 3)

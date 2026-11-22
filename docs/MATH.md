@@ -456,9 +456,64 @@ between the convex form and the free fit at ranks 2 and 3 (`cache/19_run.log`).
 inside the fit and a penalty on how far apart the vertices are"). The gate missed that reply at first because of an app note in
 front of it; fixed in L-2026-11-21-b.
 
+### 9.6 Regular-simplex hull on r + 1 vertices (`sym_tp.py: regular_hull`)
+
+Added 2026-11-22. The free rank-r fit of §6 stays the fitted and scored model. It is written exactly as a convex
+combination of r + 1 vertices, with no sum-to-one projection (§9.1) and no NNLS (§9.4). Used in scripts 13, 14 and 18 from
+that date; §9.1 to §9.4 remain in scripts 12c, 15 and 16.
+
+**Why r + 1 vertices cost nothing.** Non-negative weights never restrict the model: any larger simplex also contains the bins.
+Sum-to-one restricts it only when V ≤ r. In the coordinates of §9.2, centred and turned onto the bins' principal axes,
+
+```
+y_g = W_g L,   L Lᵀ = Φ H̄ Φᵀ,   ỹ_g = (y_g − ȳ) U        (U: principal axes, each signed so its largest coordinate is positive)
+```
+
+take any r + 1 points a_v ∈ R^r whose simplex contains every ỹ_g, the barycentric weights λ_g ≥ 0 (Σ_v λ_gv = 1), and
+φ_vᵀ = (a_v Uᵀ + ȳ) L⁻¹ Φ. Then Σ_v λ_gv φ_vᵀ = y_g L⁻¹ Φ = W_g Φ in every bin. The only choice is the simplex.
+
+**The simplex: regular, with rotation and tightness as parameters.**
+
+```
+n_k = R ν_k   (k = 1..r+1)          ν_k: unit outward facet normals of a reference regular simplex, Σ_k ν_k = 0
+m_k = max_g n_kᵀ ỹ_g                 h* = (1/(r+1)) Σ_k m_k                 n_kᵀ c = m_k − h*   (consistent: the normals sum to 0)
+a_v = c − τ r h* n_v                 (vertex v opposite facet v; centre-to-vertex = r × centre-to-facet)
+λ_gv = (τ h* − n_vᵀ(ỹ_g − c)) / ((r+1) τ h*)  =  λ_gv|_{τ=1} / τ + (1 − 1/τ) / (r+1)
+```
+
+| symbol | meaning |
+|---|---|
+| R | rotation of R^r: none at r = 1, one angle θ at r = 2 (period 120°), a rotation vector at r = 3 |
+| τ ≥ 1 | tightness: 1 is the tightest simplex of that rotation; larger values inflate it about its centre c |
+| h* | centre-to-facet distance of the tight simplex, in prediction units per sample (§9.2) |
+| m_k | how far the bins reach in direction n_k |
+
+**Default** for tables and figures: τ = 1 and the rotation with the smallest h* (a 1° grid then a bounded line search at r = 2;
+2,000 random rotations then Nelder-Mead from the best five at r = 3). Scripts 13 and 14 also sweep every rotation (1° steps at
+r = 2, 100 random rotations with seed 1 at r = 3) and τ ∈ {1, 1.25, 1.5, 2}, and report h, each vertex's distance from the nearest
+bin, its spectral radius and its largest weight.
+
+**Properties.** The vertex model rebuilds the free fit in every bin. At τ = 1 every facet touches a bin, so every vertex has a
+bin with zero weight. The vertices are equidistant in the H̄ metric (no vertex is privileged by the shape). The default vertices
+don't depend on the gauge W ↦ W M, Φ ↦ M⁻¹ Φ (unlike §9.1). At r = 1 the vertices are the two end bins. Raising τ is the shrink
+toward uniform weights of the deck's Transformation 2, Z = (bI + 11ᵀ)/(V + b), with b = V/(τ − 1).
+
+**In the scripts.** Rank 2 has 3 vertices and rank 3 has 4. Script 14's move-minus-rest map (§11.4) needs a rest vertex once
+there are three. Script 18 solves its single-trial weights (§10) on the 4-vertex simplex by the face enumeration of §9.5,
+batched. The jackknife of §8.5 is unchanged: each fold's fitted family is expressed on the full-data vertices.
+
+**Checks:** `tests/test_regular_hull.py` (exact rebuild for r = 1, 2, 3 and τ = 1, 1.3, 2; weights ≥ 0 and summing to one;
+equal edges; a zero-weight bin per vertex at τ = 1; the τ identity; end bins at r = 1; the smallest rotation beats 200 random
+ones; the 120° period; gauge invariance), `tests/test_script18_solver.py` (the batched solver against `simplex_qp`, V = 3, 4).
+
+**Status:** Approved by Aditya 2026-11-22: "Approve" (gate block: "in scripts 13, 14 and 18, write the free rank-r joint fit
+exactly with r + 1 states that form a regular simplex, with rotation and tightness as its parameters"). Not in that block and so
+not approved: the rest-vertex rule of §11.4. What should pick the rotation and tightness for later use is open (§14).
+
 ## 10. Single-trial weights (`scripts/18_single_trial_states.py`)
 
-The rank 3 fold fit (§6, 25 sweeps) and its vertices (§9) are fixed. Fold vertices are put in the order of script 13's full-data
+The rank 3 fold fit (§6, 25 sweeps) and its vertices (§9) are fixed. From 2026-11-22 the vertices are §9.6's four (τ = 1,
+smallest rotation), so λ̂ lives on Δ_4; before, it was the three of §9.3. Fold vertices are put in the order of script 13's full-data
 fit: the permutation whose 16-bin weights correlate best. Then on each trial, at each target index t:
 
 ```
@@ -506,7 +561,9 @@ phase_db`).
 ### 11.4 Edge maps
 
 A vertex's edge map is its operator summed over lags, Σ_k A_k. Script 14's "move-minus-rest" map is the rank 2 movement vertex's
-map less the other vertex's (`14: rank2`).
+map less the other vertex's (`14: rank2`). The movement vertex has the largest mean weight over the 4 move bins. From 2026-11-22
+rank 2 has 3 vertices (§9.6), and the rest vertex is, of the other two, the one with the largest mean weight over the 4 hold bins.
+That rule is a generalisation made while coding and is not yet approved.
 
 ### 11.5 h-step VAF
 
@@ -578,6 +635,8 @@ transcripts stamp UTC. No research-log entry has the `Math approved by Aditya` l
 | 8 (rest) | likelihood, 1% shrink, folds, K, SEs | not yet approved | | | | L-2026-11-02-a |
 | 9.1 to 9.4 | convex form of the free fit and its vertices | not yet approved | | | | L-2026-11-04-a |
 | 9.5 | vertex form fitted directly, spread penalty, μ chosen inside training folds | approved | 2026-11-21 | "Approve" | "fit TP-GDAR in vertex form, with the weights on the simplex inside the fit and a penalty on how far apart the vertices are" | L-2026-11-21-c |
+| 9.6 | regular-simplex hull on r + 1 vertices of the free fit, rotation and tightness as parameters; used in scripts 13, 14, 18 | approved | 2026-11-22 | "Approve" | "in scripts 13, 14 and 18, write the free rank-r joint fit exactly with r + 1 states that form a regular simplex, with rotation and tightness as its parameters" | L-2026-11-22-a |
+| 11.4 | rest vertex of script 14 with 3 vertices (largest mean hold weight) | not yet approved | | | | L-2026-11-22-a |
 | 10 | single-trial weights and tests | approved | 2026-11-05 | "Approve" (twice) | "how to tell whether the rank 3 states can be found on a single trial"; "how to test whether the rank 3 states can be found on a single held-out trial, without the task clock" | L-2026-11-05-f |
 | 11.3 | data spectrum by phase | approved | 2026-11-05 | "Approve" | "not a model-fit change, in my view: this is how to compute the per-phase spectrum for the slides, and nothing gets fitted" | L-2026-11-05-a |
 | 11 (rest) | model spectrum, radius, edge maps, VAF, reliability | not yet approved | | | | L-2026-11-02-a |
@@ -594,11 +653,16 @@ Each needs Aditya's decision through the gate. The current method is listed firs
 1. **Which model is "the" model.** The free-weight fit W Φ is scored; the sum-to-one family W_a Φ is plotted and would feed an LMI
    (§9.1). Options: report both; fit with sum-to-one as a constraint inside the joint fit; project in a gauge-invariant way.
    *2026-11-21: Aditya approved fitting in vertex form (§9.5). Whether it replaces the free fit in the reported tables is open.*
+   *2026-11-22: Aditya chose r + 1 vertices around the free fit (§9.6) for scripts 13, 14 and 18. There the scored model and the
+   vertex model are now the same.*
 2. **One Σ rule for every table** (§8.2): own Σ per model, or GDAR's Σ for all.
 3. **The rank 3 vertex rule** (§9.3): the hull-edge triangle; the true minimum-area enclosing triangle; or vertices chosen under
    graph constraints so that no vertex dominates, keeping the convex hull (Aditya's next ask, 2026-11-05).
    *2026-11-21: §9.5's spread penalty is the first such rule ("dominate" read as a vertex far outside the data). Bounds on each
    vertex's edge strengths remain a possible later constraint.*
+   *2026-11-22: in scripts 13, 14 and 18 the vertices are now §9.6's regular simplex, with rotation and tightness as parameters
+   (Aditya: "the tightness and rotation of hull will be our parameter"). Open: what picks them for later use, for example every
+   vertex stable, the LMI decay rate, or vertices close to real bins.*
 4. **Gauge** (§6.4): unit-RMS columns or orthonormal columns. It matters only through §9.1.
 5. **K = 16 at the top of the CV grid** (§8.4); GDAR's held-out ℓ still rises at K = 32.
 6. **The 1% shrink of the scoring Σ** (§8.2).

@@ -180,6 +180,135 @@ def polytope_vertices(model, Hbar):
                 affine_err=affine_err, outside=outside)
 
 
+def regular_simplex_normals(r):
+    """Outward unit facet normals ``(r + 1, r)`` of a regular r-simplex centred at 0; they sum to zero.
+
+    Facet k is opposite vertex k, so vertex k lies in direction ``-normals[k]``.  r = 1: the two ends of a segment;
+    r = 2: an equilateral triangle with normals at 0, 120 and 240 degrees; r = 3: a regular tetrahedron.  MATH §9.6.
+    """
+    if r == 1:
+        return np.array([[1.0], [-1.0]])
+    if r == 2:
+        a = 2 * np.pi * np.arange(3) / 3
+        return np.stack([np.cos(a), np.sin(a)], 1)
+    if r == 3:
+        return -np.array([[1, 1, 1], [1, -1, -1], [-1, 1, -1], [-1, -1, 1]], float) / np.sqrt(3)
+    raise ValueError("regular_simplex_normals: r must be 1, 2 or 3")
+
+
+def rotation_matrix(r, angles):
+    """Rotation of R^r: none at r = 1, one angle (radians) at r = 2, a rotation vector (3 numbers) at r = 3."""
+    if r == 1:
+        return np.eye(1)
+    if r == 2:
+        c, s = np.cos(float(np.ravel(angles)[0])), np.sin(float(np.ravel(angles)[0]))
+        return np.array([[c, -s], [s, c]])
+    from scipy.spatial.transform import Rotation
+    return Rotation.from_rotvec(np.asarray(angles, float).reshape(3)).as_matrix()
+
+
+def hull_frame(model, Hbar):
+    """Bins of a free rank-r fit in prediction coordinates, centred and on their principal axes.
+
+    ``y_g = W_g L`` with ``L L' = Phi Hbar Phi'`` (Euclidean distance = distance in the pooled data metric, MATH §9.2);
+    ``yt_g = (y_g - ybar) U`` with U the principal axes, each signed so that its largest coordinate is positive.  The
+    frame doesn't depend on the gauge W -> W M, Phi -> M^-1 Phi.  Returns (Y, ybar, U, Yt, L).
+    """
+    W, phi = model.W, model.phi
+    r = W.shape[1]
+    L = np.linalg.cholesky(phi @ Hbar @ phi.T + 1e-12 * np.eye(r))
+    Y = W @ L
+    ybar = Y.mean(0)
+    _, _, Vt = np.linalg.svd(Y - ybar, full_matrices=False)
+    U = Vt.T
+    Yt = (Y - ybar) @ U
+    flip = np.sign(Yt[np.argmax(np.abs(Yt), 0), np.arange(r)])
+    flip[flip == 0] = 1.0
+    return Y, ybar, U * flip, Yt * flip, L
+
+
+def tight_regular_simplex(Yt, rot):
+    """Tightest regular simplex of a given rotation around the rows of ``Yt (P, r)``.
+
+    Facet normals n_k = rot nu_k; m_k = max_g n_k . yt_g; h = mean_k m_k; centre c from n_k . c = m_k - h (consistent
+    because the normals sum to zero).  Every facet touches a bin.  Returns (normals, h, c).  MATH §9.6.
+    """
+    r = Yt.shape[1]
+    n = regular_simplex_normals(r) @ rot.T
+    m = (Yt @ n.T).max(0)
+    h = float(m.mean())
+    c = np.linalg.lstsq(n, m - h, rcond=None)[0]
+    return n, h, c
+
+
+def _rotation_grid(r, n_random=2000, seed=0):
+    if r == 1:
+        return [np.zeros(1)]
+    if r == 2:
+        return [np.array([np.deg2rad(d)]) for d in range(120)]
+    from scipy.spatial.transform import Rotation
+    return list(Rotation.random(n_random, random_state=seed).as_rotvec())
+
+
+def smallest_rotation(Yt):
+    """Rotation angles whose tight regular simplex is smallest (least h): grid, then a local refinement."""
+    from scipy.optimize import minimize, minimize_scalar
+    r = Yt.shape[1]
+    if r == 1:
+        return np.zeros(1)
+
+    def size(a):
+        return tight_regular_simplex(Yt, rotation_matrix(r, a))[1]
+
+    grid = _rotation_grid(r)
+    hs = np.array([size(a) for a in grid])
+    if r == 2:
+        d = float(grid[int(hs.argmin())][0])
+        res = minimize_scalar(lambda x: size([x]), bounds=(d - np.deg2rad(1), d + np.deg2rad(1)), method="bounded",
+                              options=dict(xatol=1e-10))
+        best = np.array([res.x % (2 * np.pi / 3)])
+        return best if size(best) <= hs.min() else grid[int(hs.argmin())]
+    best, best_h = grid[int(hs.argmin())], hs.min()
+    for i in np.argsort(hs)[:5]:
+        res = minimize(size, grid[i], method="Nelder-Mead", options=dict(xatol=1e-10, fatol=1e-14, maxiter=4000))
+        if res.fun < best_h:
+            best, best_h = res.x, res.fun
+    return np.asarray(best, float)
+
+
+def regular_hull(model, Hbar, angles=None, tau=1.0):
+    """Exact convex form of a free rank-r fit on r + 1 vertices forming a regular simplex (MATH §9.6).
+
+    ``Theta(p_g) = sum_v lam[g, v] Theta_v`` holds exactly for the fitted model: no sum-to-one projection, no NNLS.
+    The simplex is regular in the pooled data metric (every pair of vertices differs equally in prediction).  Its
+    parameters are the rotation ``angles`` (None: the rotation with the smallest tight simplex) and the tightness
+    ``tau >= 1`` (1: every facet touches a bin; larger values inflate it about its centre, which moves every weight
+    toward 1 / (r + 1)).  Angles are measured in the bins' principal-axis frame (``hull_frame``).
+
+    Returns a dict like ``polytope_vertices``: ``phi`` (r + 1, n_phi) vertices, ``lam`` (P, r + 1) weights, ``index``
+    and ``dist`` (nearest bin of each vertex and its distance as a fraction of the bins' spread), ``outside`` (the
+    largest miss of the rebuilt bins, ~0), ``affine_err`` (0), plus ``h`` (centre-to-facet distance), ``h_tight``,
+    ``tau``, ``angles``, ``Yv`` (vertices in prediction coordinates) and ``Y`` (bins in them).
+    """
+    if tau < 1:
+        raise ValueError("regular_hull: tau must be >= 1")
+    phi = model.phi
+    r = phi.shape[0]
+    Y, ybar, U, Yt, L = hull_frame(model, Hbar)
+    if angles is None:
+        angles = smallest_rotation(Yt)
+    angles = np.atleast_1d(np.asarray(angles, float))
+    n, h, c = tight_regular_simplex(Yt, rotation_matrix(r, angles))
+    At = c - tau * r * h * n                                   # vertex v opposite facet v
+    lam = (tau * h - (Yt - c) @ n.T) / ((r + 1) * tau * h)
+    Yv = At @ U.T + ybar
+    spread = float(np.max(np.linalg.norm(Y - ybar, axis=1)))
+    dist = np.linalg.norm(Y[:, None] - Yv[None], axis=2)
+    return dict(phi=np.linalg.solve(L.T, Yv.T).T @ phi, lam=lam, index=dist.argmin(0), dist=dist.min(0) / spread,
+                outside=float(np.max(np.linalg.norm(lam @ Yv - Y, axis=1)) / spread), affine_err=0.0,
+                h=tau * h, h_tight=h, tau=float(tau), angles=angles, Yv=Yv, Y=Y)
+
+
 def _enclosing_triangle(Y2):
     """Smallest triangle containing the 2-D points whose sides lie on convex-hull edges."""
     from itertools import combinations

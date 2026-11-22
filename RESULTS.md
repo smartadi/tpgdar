@@ -839,3 +839,74 @@ folds and vertices:
 - At rank 3 with μ = 0.01 the far vertex moves in (max 1.19 to 0.28, evoked left in) at a gain of +0.2201 against +0.2144 for
   the convex form. Whether the vertex form replaces the free fit in the reported tables is MATH §14 question 1.
 - One day, ranks 2 and 3 only. Script 19 takes about 11 min.
+
+## Regular-simplex hull on r + 1 vertices (`13`, `14`, `18`), 2026-11-22
+
+Method: MATH §9.6, approved by Aditya 2026-11-22. The free rank-r fit stays the scored model and is written exactly on r + 1
+vertices forming a regular simplex in the pooled data metric; rotation and tightness τ are its parameters. Default: τ = 1, the
+rotation with the smallest simplex. Old numbers are from the 2026-11-05 runs (`cache/*_run.2026-11-05.log`), new ones from
+`cache/13_run.log`, `cache/14_run.log`, `cache/18_run.log`.
+
+**Held-out gains did not change**, because the model did not: 11-12 rank 2 +0.1898 / +0.2475, rank 3 +0.2222 / +0.3233 (evoked
+left in / removed), and every script 14 gain, identical to 4 decimals. The vertex model rebuilds every bin to within 7e-15 of the
+spread.
+
+**Default vertices, H 2021-11-12.** Distance from the nearest bin (fraction of the bins' spread) and spectral radius:
+
+| | rank 2, 3 vertices | rank 3, 4 vertices |
+|---|---|---|
+| distance, evoked left in | 0.28, 0.00, 1.05 | 0.11, 1.60, 0.42, 0.74 |
+| distance, evoked removed | 0.28, 0.00, 1.21 | 0.00, 1.23, 0.26, 0.61 |
+| spectral radius, evoked left in | 0.965, 0.964, 0.968 | 0.968, **1.012**, 0.966, 0.965 |
+| spectral radius, evoked removed | 0.936, 0.945, 0.965 | 0.964, **1.037**, 0.943, 0.941 |
+| before (2 / 3 vertices), distance | 0.00, 0.00 and 0.00, 0.00 | 0.00, 1.01, 0.16 and 0.12, 0.00, 0.35 |
+
+- Rank 3, evoked left in: vertex 1 carries hold (0.95 at hold 1/4), vertex 3 move (0.73 to 0.77 in move 2/4 to 4/4), vertex 4
+  late post (0.60 at post 3/4) and early plan (0.40 at plan 1/4). Vertex 2, the far and unstable one, has weight 0.15 or less in
+  every bin.
+- On the other days the default rank 3 simplex also has one vertex 1.19 to 1.77 of the spread from the nearest bin. That vertex
+  is unstable on 08-23 (1.055 / 1.043) and 11-11 lit (1.029 / 1.218), not on 11-11 unlit (largest 0.976 / 0.996). At rank 2 a
+  default vertex is unstable on 08-23 removed (1.073), 11-11 unlit removed (1.006) and 11-11 lit (1.098 / 1.026).
+
+**Rotation and tightness sweep, H 2021-11-12.** Share of rotations at which every vertex is stable (rank 2: 120 rotations, 1°
+apart; rank 3: 100 random rotations):
+
+| τ | rank 2, left in | rank 2, removed | rank 3, left in | rank 3, removed |
+|---|---|---|---|---|
+| 1 | 38% | 33% | 7% | 7% |
+| 1.25 | 25% | 22% | 0% | 0% |
+| 1.5 | 17% | 13% | 0% | 0% |
+| 2 | 0% | 0% | 0% | 0% |
+
+At τ = 1 the median vertex distance over rotations is 0.78 / 0.61 at rank 2 and 1.24 / 1.10 at rank 3.
+
+**Script 14, move-minus-rest edges** (rest vertex: of the non-move vertices, the one with the largest mean hold weight; that rule
+is not yet approved): r with 11-12 = 0.132 / 0.477 (08-23), 0.119 / 0.151 (11-11 unlit), 0.215 / 0.130 (11-11 lit), against
+0.15 / 0.47, 0.12 / 0.15, 0.21 / 0.13 before.
+
+**Script 18, single-trial weights on the 4 vertices** (GDAR's Sigma for every row, 167,932 samples, fold SE in brackets):
+
+| weights | gain, now | gain, before (3 vertices) |
+|---|---|---|
+| clock (own go and touch) | +0.1618 (0.0077) / +0.2150 (0.0100) | +0.1557 / +0.2069 |
+| previous 30 ms | +0.1765 (0.0070) / +0.2207 (0.0075) | +0.1712 / +0.2350 |
+| previous 60 ms | +0.2039 (0.0058) / +0.2400 (0.0064) | +0.1934 / +0.2391 |
+| previous 120 ms | +0.2068 (0.0064) / +0.2397 (0.0070) | +0.1953 / +0.2287 |
+
+- The clock row rose because the clock weights now rebuild the scored free fit exactly; before, they came from the projected
+  W_a. Weights read off the data still beat the clock.
+- Timing, evoked left in: go is still not recovered (r +0.02 to +0.04, permutation p 0.23 to 0.39); touch partly is (r +0.32,
+  +0.33, +0.44 for 30, 60, 120 ms, p 0.0001); movement time is not (r −0.09 to +0.03).
+- Agreement with the trial's own clock, evoked left in: median r 0.70, 0.79, 0.85 (before 0.73, 0.81, 0.86); the own clock beats
+  the median-timed clock on 54 to 56% of trials, Wilcoxon p 1.9e-2 to 4.2e-3 (before 6.2e-4 to 1.8e-4). Evoked removed: 50 to 51%,
+  p 0.26 to 0.49.
+- Fold vertices match the full-data ones at mean r 0.99 (left in) and 0.97 to 0.99 (removed).
+
+**Caveats.**
+- The regular shape puts one vertex far out across the short direction of the bins' cloud, and that vertex is often unstable. A
+  far vertex is an extrapolation of the fitted family, and its spectrum (figure 13, panel B) is not a state the data visit.
+- Loosening the simplex (τ > 1) makes some vertex unstable at nearly every rotation at rank 3.
+- What should pick the rotation and tightness for later use is open (MATH §14 question 3).
+
+Figures: `figures/13_vertices_{felix,induced}_r{2,3}.png`, `figures/14_days_comparison.png`, `figures/14_vertices_*_r2.png`,
+`figures/18_single_trial_states.png`.

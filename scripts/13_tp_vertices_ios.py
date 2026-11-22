@@ -2,14 +2,19 @@ r"""Vertex graphs of TP-GDAR and their weights across the trial, H 2021-11-12, n
 
 Each trial is warped onto one axis, p = trial phase: hold, plan, move and post, each cut
 into 4 equal fractions of its own duration on that trial (16 grid points).  The symmetric
-TP-GDAR is fitted at K = 16 and put in convex form,
-Theta(p) = sum_v lam_v(p) Theta_v, lam >= 0, sum 1 (`gdar_tp.sym_tp.polytope_vertices`).
+TP-GDAR is fitted at K = 16 and written exactly in convex form on r + 1 vertices,
+Theta(p) = sum_v lam_v(p) Theta_v, lam >= 0, sum 1 (`gdar_tp.sym_tp.regular_hull`, MATH §9.6, approved
+by Aditya 2026-11-22).  The vertices form a regular simplex in the pooled data metric; its rotation and
+tightness tau are free parameters.  Tables and figures use tau = 1 and the rotation with the smallest
+simplex; a sweep over rotations (every degree at rank 2, 100 random rotations at rank 3) and
+tau in TAUS reports each vertex's distance from the data, its spectral radius and its largest weight.
+The model is the free fit, so the held-out gain doesn't depend on the vertices.
 
-Rank 2 vertices are grid points on the trajectory; rank 3 vertices are the corners of an
-enclosing triangle, generally not visited by the data.  Either way they are one choice of
-coordinates for the fitted rank-r family; only the family itself is unique.  Uncertainty: the same fit
-on the 5 training splits, expressed in the full-data vertices (jackknife SE).  The held-out
-gain over GDAR comes from those same splits.
+The vertices are one choice of coordinates for the fitted rank-r family; only the family itself is
+unique.  Uncertainty: the same fit on the 5 training splits, expressed in the full-data vertices
+(jackknife SE).  The held-out gain over GDAR comes from those same splits.  Before 2026-11-22 the
+vertices came from `polytope_vertices` (r vertices after a sum-to-one projection); the log still
+lists them for comparison.
 
 Run:  .venv\Scripts\python scripts/13_tp_vertices_ios.py [--plot]
 """
@@ -29,15 +34,44 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 s12 = importlib.import_module("12_tp_vs_gdar_ios")
 s12b = importlib.import_module("12b_tp_vs_gdar_robust")
-from gdar_tp.sym_tp import (_quad, fit_gls_pooled, fit_sym_tp, gls_quads, polytope_vertices,  # noqa: E402
-                            symmetric_basis, theta_of)
+from gdar_tp.sym_tp import (_quad, _rotation_grid, fit_gls_pooled, fit_sym_tp, gls_quads,  # noqa: E402
+                            polytope_vertices, regular_hull, symmetric_basis, theta_of)
 from gdar_tp.tp import _barycentric  # noqa: E402
 
 K = 16
 NSUB = 4
 RANKS = (2, 3)
+TAUS = (1.0, 1.25, 1.5, 2.0)
+N_ROT3 = 100
 CACHE = os.path.join(ROOT, "cache", "13_vertices_H_2021-11-12.pkl")
 log = s12.log
+
+
+def hull_sweep(m, Hbar, R, N):
+    """Each vertex's distance from the data, spectral radius and largest weight, over rotations and tau (MATH §9.6)."""
+    r = m.W.shape[1]
+    rots = _rotation_grid(r) if r != 3 else _rotation_grid(3, n_random=N_ROT3, seed=1)
+    shape = (len(rots), len(TAUS), r + 1)
+    out = dict(angles=np.array(rots), taus=np.array(TAUS), h=np.zeros(shape[:2]), dist=np.zeros(shape),
+               rho=np.zeros(shape), lam_max=np.zeros(shape))
+    for i, a in enumerate(rots):
+        for j, tau in enumerate(TAUS):
+            hu = regular_hull(m, Hbar, angles=a, tau=tau)
+            out["h"][i, j] = hu["h"]
+            out["dist"][i, j] = hu["dist"]
+            out["lam_max"][i, j] = hu["lam"].max(0)
+            out["rho"][i, j] = [np.abs(s12.rho(theta_of(ph, R, N), K)).max() for ph in hu["phi"]]
+    return out
+
+
+def log_sweep(tag, sw):
+    n = len(sw["angles"])
+    for j, tau in enumerate(sw["taus"]):
+        rmax = sw["rho"][:, j].max(1)
+        log(f"     {tag} sweep tau {tau:.2f} over {n} rotations: size h {sw['h'][:, j].min():.3f} to {sw['h'][:, j].max():.3f}; "
+            f"vertex distance from nearest bin median {np.median(sw['dist'][:, j]):.2f}, max {sw['dist'][:, j].max():.2f}; "
+            f"largest vertex spectral radius {rmax.min():.3f} to {rmax.max():.3f} (median {np.median(rmax):.3f}), "
+            f"all vertices stable at {np.mean(rmax < 1):.0%} of rotations; largest weight per vertex, median {np.median(sw['lam_max'][:, j]):.2f}")
 
 
 def warped_labels(D):
@@ -101,10 +135,20 @@ def run_variant(D, lab, fo, Z, variant):
     quads = gls_quads(st, R, Sig)
     for r in RANKS:
         m = fit_sym_tp(st, R, Sig, r, grid, n_iter=40, quads=quads)
-        full[r] = dict(model=m, poly=polytope_vertices(m, Hbar), J=m.objective)
+        old = polytope_vertices(m, Hbar)
+        full[r] = dict(model=m, poly=regular_hull(m, Hbar), old=old, J=m.objective)
         p = full[r]["poly"]
-        log(f"  [{variant}] rank {r}: {len(m.objective)-1} sweeps, vertices {[bin_name(i) for i in p['index']]}, "
-            f"sum-to-one error {p['affine_err']:.3f}, outside simplex {p['outside']:.3f}, {time.time()-t0:.0f}s")
+        ang = (f"{np.rad2deg(p['angles'][0]):.1f} deg" if r == 2 else
+               "rotation vector " + " ".join(f"{a:+.3f}" for a in p["angles"]))
+        log(f"  [{variant}] rank {r}: {len(m.objective)-1} sweeps; {r + 1} vertices, smallest regular simplex at {ang}, "
+            f"tau 1, size h {p['h']:.3f}, rebuilt-bin miss {p['outside']:.1e}; nearest bins "
+            f"{[bin_name(i) for i in p['index']]}, distance {' '.join(f'{d:.2f}' for d in p['dist'])} of spread, "
+            f"{time.time()-t0:.0f}s")
+        log(f"     before 2026-11-22 ({r} vertices after the sum-to-one projection): nearest bins "
+            f"{[bin_name(i) for i in old['index']]}, distance {' '.join(f'{d:.2f}' for d in old['dist'])}, "
+            f"sum-to-one error {old['affine_err']:.3f}")
+        full[r]["sweep"] = hull_sweep(m, Hbar, R, N)
+        log_sweep(f"[{variant}] rank {r}", full[r]["sweep"])
 
     # the 5 training splits: jackknife weights and held-out gain
     lams = {r: [] for r in RANKS}
@@ -137,7 +181,7 @@ def run_variant(D, lab, fo, Z, variant):
     return out
 
 
-COL = (s12.C_FELIX, s12.C_IND, s12.C_3)
+COL = (s12.C_FELIX, s12.C_IND, s12.C_3, "#6250d6")
 
 
 def fig_variant(res, D, r, title):
@@ -148,7 +192,7 @@ def fig_variant(res, D, r, title):
     f = res["full"][r]
     p = f["poly"]
     R, N, Sig = res["R"], D["X"].shape[2], res["Sigma"]
-    P = p["lam"].shape[0]
+    P, V = p["lam"].shape
     pos, A = D["pos"], D["A"]
     iu, ju = np.where(np.triu(A, 1))
 
@@ -164,7 +208,7 @@ def fig_variant(res, D, r, title):
     a_w, a_s = top.subplots(1, 2, width_ratios=[1.9, 1])
 
     x = np.arange(P) + 0.5
-    for v in range(r):
+    for v in range(V):
         a_w.plot(x, p["lam"][:, v], "-o", ms=5, color=COL[v], label=f"vertex {v+1}")
         a_w.fill_between(x, p["lam"][:, v] - f["lam_se"][:, v], p["lam"][:, v] + f["lam_se"][:, v],
                          color=COL[v], alpha=0.18, lw=0)
@@ -175,11 +219,11 @@ def fig_variant(res, D, r, title):
     a_w.set_ylim(-0.05, 1.05)
     a_w.set_ylabel("vertex weight λ (sums to 1)")
     a_w.set_title("A  Weights across the trial (band: jackknife SE over 5 training splits)")
-    a_w.legend(loc="lower right", bbox_to_anchor=(1, 1), ncol=r, borderaxespad=0)
+    a_w.legend(loc="lower right", bbox_to_anchor=(1, 1), ncol=V, borderaxespad=0)
 
     freqs = np.arange(2.0, 101.0, 1.0)
     base = s12.ar_spectrum(theta_of(res["phi0"], R, N), Sig, K, freqs)
-    for v in range(r):
+    for v in range(V):
         a_s.plot(freqs, 10 * np.log10(s12.ar_spectrum(theta_of(p["phi"][v], R, N), Sig, K, freqs) / base),
                  color=COL[v], label=f"vertex {v+1}")
     s12._zero(a_s)
@@ -206,9 +250,9 @@ def fig_variant(res, D, r, title):
         cb.set_label(tag, fontsize=8)
 
     rhos = [np.abs(s12.rho(theta_of(ph, R, N), K)).max() for ph in p["phi"]]
-    maps(mid, S, [f"C  Vertex {v+1}: {'near ' if p['dist'][v] > 1e-9 else ''}{bin_name(p['index'][v])}, ρ = {rhos[v]:.3f}" for v in range(r)],
+    maps(mid, S, [f"C  Vertex {v+1}: {'near ' if p['dist'][v] > 1e-9 else ''}{bin_name(p['index'][v])}, ρ = {rhos[v]:.3f}" for v in range(V)],
          "edge weight, summed over lags")
-    maps(bot, [m - S0 for m in S] + [S0], [f"D  Vertex {v+1} minus GDAR" for v in range(r)] + ["GDAR, for reference"],
+    maps(bot, [m - S0 for m in S] + [S0], [f"D  Vertex {v+1} minus GDAR" for v in range(V)] + ["GDAR, for reference"],
          "edge weight, summed over lags")
     return fig
 
@@ -221,7 +265,7 @@ def plot():
     for v, name in (("felix", "evoked left in"), ("induced", "evoked removed")):
         for r in RANKS:
             fig = fig_variant(out[v], D, r,
-                              f"TP-GDAR rank {r} vertex graphs and weights across the trial, {name}: "
+                              f"TP-GDAR rank {r}, {r + 1} vertices (smallest regular simplex), {name}: "
                               f"H 2021-11-12, no stim, K = {K}, held-out gain {out[v]['full'][r]['gain'].sum()/out[v]['cnt'].sum():+.3f} nats/sample")
             path = os.path.join(s12.FIG, f"13_vertices_{v}_r{r}.png")
             fig.savefig(path, dpi=170)

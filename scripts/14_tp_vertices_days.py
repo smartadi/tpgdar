@@ -9,6 +9,9 @@ on lit trials A(p) can absorb the light's effect, so those vertices are not intr
 On the stim day a sample is dropped if it or any of its K lags falls in the light artefact
 windows (-20..60 and 860..960 ms re target, as in iosreach lti_phase), on both trial types.
 
+Vertices: script 13's regular hull on r + 1 vertices (MATH §9.6, from 2026-11-22), with its rotation
+and tightness sweep.
+
 Run:  .venv\Scripts\python scripts/14_tp_vertices_days.py [--plot]
 """
 
@@ -90,11 +93,18 @@ def main():
 
 
 def rank2(res, N):
-    """(lam of the movement vertex over bins, move-minus-rest edges summed over lags)."""
+    """(lam of the movement vertex over bins, move-minus-rest edges summed over lags, jackknife SE).
+
+    Movement vertex: the largest mean weight over the move bins.  Rest vertex: of the others, the largest mean weight
+    over the hold bins.  With the 2 vertices used before 2026-11-22 the rest vertex was simply the other one; with the
+    3 vertices of the regular hull (MATH §9.6) it is the hold one.
+    """
     p = res["full"][2]["poly"]
     move = int(np.argmax(p["lam"][8:12].mean(0)))
+    others = [v for v in range(p["lam"].shape[1]) if v != move]
+    rest = others[int(np.argmax(p["lam"][0:4, others].mean(0)))]
     summed = [sum(theta_of(ph, res["R"], N)[:, k * N:(k + 1) * N] for k in range(K)) for ph in p["phi"]]
-    return p["lam"][:, move], summed[move] - summed[1 - move], res["full"][2]["lam_se"][:, move]
+    return p["lam"][:, move], summed[move] - summed[rest], res["full"][2]["lam_se"][:, move]
 
 
 def plot():
@@ -160,7 +170,7 @@ def plot():
     for rn, r in out.items():
         D = load(*RUNS[rn])
         for v, name in (("felix", "evoked left in"), ("induced", "evoked removed")):
-            f = s13.fig_variant(r[v], D, 2, f"TP-GDAR rank 2, H {rn}, {name}: K = {K}, held-out gain "
+            f = s13.fig_variant(r[v], D, 2, f"TP-GDAR rank 2, 3 vertices, H {rn}, {name}: K = {K}, held-out gain "
                                             f"{r[v]['full'][2]['gain'].sum()/r[v]['cnt'].sum():+.3f} nats/sample")
             f.savefig(os.path.join(s12.FIG, f"14_vertices_{rn.replace(' ', '_')}_{v}_r2.png"), dpi=170)
             plt.close(f)
