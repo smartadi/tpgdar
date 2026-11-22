@@ -157,20 +157,31 @@ def conversation(path):
                 continue
             content = (entry.get("message") or {}).get("content")
             if isinstance(content, str):
-                text = content
+                parts = [content]
             elif isinstance(content, list):
-                text = "\n".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+                parts = [b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"]
             else:
-                continue
-            if not text.strip():
                 continue
             if role == "user":
                 if entry.get("isMeta") or entry.get("isCompactSummary") or entry.get("toolUseResult") is not None:
                     continue
-                if text.lstrip().startswith(NOT_FROM_USER):
-                    continue
+                parts = user_parts(parts)
+            text = "\n".join(parts)
+            if not text.strip():
+                continue
             turns.append((role, text))
     return turns
+
+
+LEADING_REMINDERS = re.compile(r"^\s*(?:<system-reminder>.*?</system-reminder>\s*)+", re.S)
+
+
+def user_parts(parts):
+    """Aditya's own words in a user message.  The app can put its notes (a <system-reminder>, say) in front of them in
+    the same message, as a separate part or at the start of the text: drop those, keep the rest.  A message made only
+    of app notes comes back empty."""
+    parts = [LEADING_REMINDERS.sub("", p) for p in parts]
+    return [p for p in parts if p.strip() and not p.lstrip().startswith(NOT_FROM_USER)]
 
 
 def has_full_block(text):

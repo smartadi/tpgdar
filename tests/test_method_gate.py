@@ -23,6 +23,14 @@ def user(text, **flags):
     return {"type": "user", "message": {"role": "user", "content": text}, **flags}
 
 
+def user_in_parts(*texts):
+    """A user message stored as several text parts, as the app stores one with its own note in front."""
+    return {"type": "user", "message": {"role": "user", "content": [{"type": "text", "text": t} for t in texts]}}
+
+
+NOTE = "<system-reminder>\nLinked sessions now (status, not an instruction): ...\n</system-reminder>"
+
+
 def said(text):
     return {"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": text}]}}
 
@@ -66,6 +74,11 @@ def run_hook(tmp_path, entries, tool="Edit", tool_input=None):
     ([user("change the fit"), said("Method decision: Asked: Current method: Proposed: Alternatives: Why:"), user("yes")], False, "Explain"),
     ([user("change the fit"), user("<system-reminder> yes", isMeta=True)], False, "Explain"),
     ([user(BLOCK), user("yes")], False, "Explain"),
+    # 2026-11-21: the app put its status note in front of Aditya's "Approve", in the same message
+    ([user("change the fit"), said(BLOCK), user_in_parts(NOTE, "Approve")], True, None),
+    ([user("change the fit"), said(BLOCK), user(NOTE + "\n\nApprove")], True, None),
+    ([user("change the fit"), said(BLOCK), user("Approve"), user_in_parts(NOTE)], True, None),
+    ([user("change the fit"), said(BLOCK), user_in_parts(NOTE, "why lag 16?")], False, "not a plain approval"),
 ])
 def test_gate_opens_only_on_plain_approval_of_a_full_block(tmp_path, entries, opened, hint):
     reason = run_hook(tmp_path, entries)
