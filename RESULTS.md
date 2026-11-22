@@ -910,3 +910,46 @@ is not yet approved): r with 11-12 = 0.132 / 0.477 (08-23), 0.119 / 0.151 (11-11
 
 Figures: `figures/13_vertices_{felix,induced}_r{2,3}.png`, `figures/14_days_comparison.png`, `figures/14_vertices_*_r2.png`,
 `figures/18_single_trial_states.png`.
+
+### Rotation rule: every vertex stable (same day, later)
+
+Rule approved by Aditya 2026-11-22 (MATH §9.6): τ = 1 and the smallest rotation whose vertices all have spectral radius below 1;
+where none does, the least unstable, flagged. Held-out gains are again unchanged. Old = the smallest rotation without the rule
+(the section above). Source: `cache/13_run.log`, `cache/14_run.log`, `cache/18_run.log`.
+
+**H 2021-11-12.** Rank 2 is unchanged: the smallest rotation already had every vertex stable. Rank 3, evoked left in / removed:
+
+| | size h | distance from nearest bin | spectral radius |
+|---|---|---|---|
+| without the rule, left in | 0.453 | 0.11, 1.60, 0.42, 0.74 | 0.968, 1.012, 0.966, 0.965 |
+| with the rule, left in | 0.478 | 1.31, 1.14, 0.15, 0.49 | 0.969, 0.997, 0.969, 0.965 |
+| without the rule, removed | 0.517 | 0.00, 1.23, 0.26, 0.61 | 0.964, 1.037, 0.943, 0.941 |
+| with the rule, removed | 0.539 | 0.91, 1.01, 0.04, 0.29 | 0.947, 0.993, 0.967, 0.949 |
+
+- Evoked left in: vertex 3 carries hold (0.92 at hold 1/4), vertex 4 move (0.72 to 0.74 in move 2/4 to 4/4). Vertices 1 and 2,
+  both nearest post 3/4 and 1.31 and 1.14 of the spread away, share plan 1/4 (0.17, 0.34) and late post (0.32, 0.40 at post 3/4).
+- Evoked removed: vertex 3 hold (0.97), vertex 4 move (0.78 to 0.82), vertex 1 plan 1/4 (0.41) and post, vertex 2 plan 2/4 (0.34).
+- With the rule, two of the four vertices sit about one spread out, where without it one sat further out (1.60, 1.23).
+
+**Other days.** A stable rotation was found for 14 of the 16 fits (4 runs, 2 variants, ranks 2 and 3). Not on 11-11 lit trials
+with evoked removed: rank 2 keeps a vertex at 1.025 and rank 3 one at 1.028. On 11-11 lit with evoked left in, stable rotations
+exist (candidates 377 and 579 in size order), which the coarser sweep had missed. On 11-11 unlit, evoked removed, rank 2 the kept
+vertex has radius 1.000 to 3 decimals (below 1). Move-minus-rest edge r with 11-12 (rest rule not approved): 0.132 / 0.473,
+0.119 / 0.153, 0.214 / 0.131.
+
+**Script 18 on the stable vertices** (GDAR's Sigma, fold SE in brackets):
+
+| weights | with the rule | without the rule |
+|---|---|---|
+| clock (own go and touch) | +0.1618 (0.0077) / +0.2150 (0.0100) | +0.1618 / +0.2150 |
+| previous 30 ms | +0.1669 (0.0080) / +0.2212 (0.0074) | +0.1765 / +0.2207 |
+| previous 60 ms | +0.1939 (0.0079) / +0.2409 (0.0070) | +0.2039 / +0.2400 |
+| previous 120 ms | +0.2013 (0.0078) / +0.2413 (0.0072) | +0.2068 / +0.2397 |
+
+- Every fold's vertices are stable (largest radius 0.980 to 0.997).
+- The clock row does not change, because the clock weights rebuild the free fit whatever the vertices. The window weights do:
+  evoked left in they are lower than without the rule (table) but still beat the clock.
+- Fold vertices match the full-data ones less well: mean r 1.00, 1.00, 1.00, 0.70, 0.97 (left in) and 1.00, 0.94, 1.00, 0.92,
+  0.94 (removed). The rule picks quite different rotations in some folds.
+- Timing, evoked left in: go r −0.02 to +0.05 (p 0.17 to 0.62), touch r +0.35, +0.40, +0.44 (p 0.0001). Agreement with the
+  trial's own clock: median r 0.66, 0.76, 0.83 (left in), 0.77, 0.84, 0.88 (removed).

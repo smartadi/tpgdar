@@ -5,8 +5,9 @@ into 4 equal fractions of its own duration on that trial (16 grid points).  The 
 TP-GDAR is fitted at K = 16 and written exactly in convex form on r + 1 vertices,
 Theta(p) = sum_v lam_v(p) Theta_v, lam >= 0, sum 1 (`gdar_tp.sym_tp.regular_hull`, MATH §9.6, approved
 by Aditya 2026-11-22).  The vertices form a regular simplex in the pooled data metric; its rotation and
-tightness tau are free parameters.  Tables and figures use tau = 1 and the rotation with the smallest
-simplex; a sweep over rotations (every degree at rank 2, 100 random rotations at rank 3) and
+tightness tau are free parameters.  Tables and figures use tau = 1 and the smallest rotation whose
+vertices are all stable (spectral radius < 1; `stable_regular_hull`, rule approved 2026-11-22), or,
+where no rotation is, the least unstable one, flagged in the log.  A sweep over rotations (every degree at rank 2, 100 random rotations at rank 3) and
 tau in TAUS reports each vertex's distance from the data, its spectral radius and its largest weight.
 The model is the free fit, so the held-out gain doesn't depend on the vertices.
 
@@ -35,7 +36,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 s12 = importlib.import_module("12_tp_vs_gdar_ios")
 s12b = importlib.import_module("12b_tp_vs_gdar_robust")
 from gdar_tp.sym_tp import (_quad, _rotation_grid, fit_gls_pooled, fit_sym_tp, gls_quads,  # noqa: E402
-                            polytope_vertices, regular_hull, symmetric_basis, theta_of)
+                            polytope_vertices, regular_hull, stable_regular_hull, symmetric_basis, theta_of)
 from gdar_tp.tp import _barycentric  # noqa: E402
 
 K = 16
@@ -136,14 +137,21 @@ def run_variant(D, lab, fo, Z, variant):
     for r in RANKS:
         m = fit_sym_tp(st, R, Sig, r, grid, n_iter=40, quads=quads)
         old = polytope_vertices(m, Hbar)
-        full[r] = dict(model=m, poly=regular_hull(m, Hbar), old=old, J=m.objective)
+        smallest = regular_hull(m, Hbar)
+        full[r] = dict(model=m, poly=stable_regular_hull(m, Hbar, R, N, K), smallest=smallest, old=old, J=m.objective)
         p = full[r]["poly"]
         ang = (f"{np.rad2deg(p['angles'][0]):.1f} deg" if r == 2 else
                "rotation vector " + " ".join(f"{a:+.3f}" for a in p["angles"]))
-        log(f"  [{variant}] rank {r}: {len(m.objective)-1} sweeps; {r + 1} vertices, smallest regular simplex at {ang}, "
-            f"tau 1, size h {p['h']:.3f}, rebuilt-bin miss {p['outside']:.1e}; nearest bins "
-            f"{[bin_name(i) for i in p['index']]}, distance {' '.join(f'{d:.2f}' for d in p['dist'])} of spread, "
+        what = (f"smallest regular simplex with every vertex stable (candidate {p['n_checked']})" if p["stable"] else
+                f"NO STABLE ROTATION among {p['n_checked']} candidates; the least unstable kept")
+        log(f"  [{variant}] rank {r}: {len(m.objective)-1} sweeps; {r + 1} vertices, {what}, at {ang}, tau 1, "
+            f"size h {p['h']:.3f} (smallest without the stability rule {p['h_smallest']:.3f}), rebuilt-bin miss "
+            f"{p['outside']:.1e}; nearest bins {[bin_name(i) for i in p['index']]}, distance "
+            f"{' '.join(f'{d:.2f}' for d in p['dist'])} of spread, spectral radius {' '.join(f'{x:.3f}' for x in p['rho'])}, "
             f"{time.time()-t0:.0f}s")
+        rs = [np.abs(s12.rho(theta_of(ph, R, N), K)).max() for ph in smallest["phi"]]
+        log(f"     smallest without the stability rule (default 2026-11-22 morning): distance "
+            f"{' '.join(f'{d:.2f}' for d in smallest['dist'])}, spectral radius {' '.join(f'{x:.3f}' for x in rs)}")
         log(f"     before 2026-11-22 ({r} vertices after the sum-to-one projection): nearest bins "
             f"{[bin_name(i) for i in old['index']]}, distance {' '.join(f'{d:.2f}' for d in old['dist'])}, "
             f"sum-to-one error {old['affine_err']:.3f}")
@@ -265,7 +273,7 @@ def plot():
     for v, name in (("felix", "evoked left in"), ("induced", "evoked removed")):
         for r in RANKS:
             fig = fig_variant(out[v], D, r,
-                              f"TP-GDAR rank {r}, {r + 1} vertices (smallest regular simplex), {name}: "
+                              f"TP-GDAR rank {r}, {r + 1} vertices (smallest stable regular simplex), {name}: "
                               f"H 2021-11-12, no stim, K = {K}, held-out gain {out[v]['full'][r]['gain'].sum()/out[v]['cnt'].sum():+.3f} nats/sample")
             path = os.path.join(s12.FIG, f"13_vertices_{v}_r{r}.png")
             fig.savefig(path, dpi=170)

@@ -2,8 +2,8 @@ r"""Can the rank 3 states be found on a single held-out trial, without the task 
 
 Method approved by Aditya on 2026-11-05.  The fit is script 13's fold fit, unchanged: the joint rank-3 TP-GDAR at K = 16
 on the 16 warped bins (hold, plan, move, post, 4 each), fitted on 4 of the 5 folds, written exactly in convex form on
-4 vertices: the smallest regular simplex around the bins, tau = 1 (MATH §9.6, approved by Aditya 2026-11-22; before
-that, 3 vertices on the hull-edge triangle after a sum-to-one projection).  Then, on every trial and at every time t,
+4 vertices: the smallest regular simplex around the bins whose vertices are all stable, tau = 1 (MATH §9.6, approved by
+Aditya 2026-11-22; before that, 3 vertices on the hull-edge triangle after a sum-to-one projection).  Then, on every trial and at every time t,
 the weights are estimated from that trial's own data, with no go or touch time and no bin label:
 
     lam_hat(t) = argmin_{lam >= 0, sum lam = 1}  sum_{s in window}  || x(s+1) - sum_v lam_v Theta_v z(s) ||^2_{Sigma^-1}
@@ -45,7 +45,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 s12 = importlib.import_module("12_tp_vs_gdar_ios")
 s12b = importlib.import_module("12b_tp_vs_gdar_robust")
 s13 = importlib.import_module("13_tp_vertices_ios")
-from gdar_tp.sym_tp import _quad, fit_gls_pooled, fit_sym_tp, regular_hull, symmetric_basis, theta_of  # noqa: E402
+from gdar_tp.sym_tp import _quad, fit_gls_pooled, fit_sym_tp, stable_regular_hull, symmetric_basis, theta_of  # noqa: E402
 
 K = s13.K
 P = 4 * s13.NSUB
@@ -186,7 +186,7 @@ def fold_job(job):
     phi0, Sf = fit_gls_pooled(a["Gzz"], a["Gzy"], a["Syy"], a["n"], R)
     Hbar = _quad(a["Gzz"], a["Gzy"], R, np.linalg.pinv(Sf))[0] / a["n"]
     model = fit_sym_tp(tr, R, Sf, RANK, np.arange(float(P)), n_iter=25)
-    poly = regular_hull(model, Hbar)
+    poly = stable_regular_hull(model, Hbar, R, N, K)
     perm, match = align(poly["lam"], ref)
     lam_bins = poly["lam"][:, perm]
     Th0 = theta_of(phi0, R, N)
@@ -232,6 +232,7 @@ def fold_job(job):
     cnt = np.array([(m3 & (phase == q)).sum() for q in range(4)])
 
     out = dict(f=f, te=te, tt=tt, match=match, lam_bins=lam_bins, go_med=go_med, touch_med=touch_med,
+               stable=bool(poly["stable"]), rho_v=poly["rho"][perm],
                clock=clock[te].astype(np.float32), hat={}, r_own={}, r_med={}, gsum=gsum, cnt=cnt,
                go_hat={}, touch_hat={}, tmpl_go={}, tmpl_touch={})
     for W in WINDOWS:
@@ -268,6 +269,8 @@ def summarize(variant, res, D):
     S = dict(te=te, folds=res, match=[r["match"] for r in res])
     log(f"\n=== {variant}: vertex match to the full-data fit (mean r of the 16-bin weights), by fold: "
         + " ".join(f"{m:.2f}" for m in S["match"]))
+    log("  fold vertices all stable: " + " ".join("yes" if r.get("stable") else "NO" for r in res)
+        + "; largest vertex spectral radius by fold " + " ".join(f"{r['rho_v'].max():.3f}" for r in res))
 
     cnt = sum(r["cnt"] for r in res)
     S["gain"], S["gain_se"], S["gain_phase"] = {}, {}, {}

@@ -488,8 +488,17 @@ a_v = c − τ r h* n_v                 (vertex v opposite facet v; centre-to-ve
 | h* | centre-to-facet distance of the tight simplex, in prediction units per sample (§9.2) |
 | m_k | how far the bins reach in direction n_k |
 
-**Default** for tables and figures: τ = 1 and the rotation with the smallest h* (a 1° grid then a bounded line search at r = 2;
-2,000 random rotations then Nelder-Mead from the best five at r = 3). Scripts 13 and 14 also sweep every rotation (1° steps at
+**Rotation rule** (`stable_regular_hull`, approved 2026-11-22, the same day): τ = 1, and the smallest simplex whose vertices
+are all stable. Candidates: every 0.1° at r = 2 (1,200), 2,000 random rotations (seed 0) at r = 3, plus the unconstrained
+smallest rotation (a 1° grid then a bounded line search at r = 2; 2,000 random rotations then Nelder-Mead from the best five
+at r = 3). They are sorted by h* and tried from the smallest up; the first with
+
+```
+max_v ρ_v < 1,      ρ_v = max |eig(A_c(Θ_v))|   (§11.1)
+```
+
+is kept. If none is, the candidate with the smallest max_v ρ_v is kept and flagged as having no stable rotation. Until this
+rule, the default was the unconstrained smallest rotation, which on 11-12 at rank 3 left a vertex at ρ = 1.012 / 1.037. Scripts 13 and 14 also sweep every rotation (1° steps at
 r = 2, 100 random rotations with seed 1 at r = 3) and τ ∈ {1, 1.25, 1.5, 2}, and report h, each vertex's distance from the nearest
 bin, its spectral radius and its largest weight.
 
@@ -508,7 +517,10 @@ ones; the 120° period; gauge invariance), `tests/test_script18_solver.py` (the 
 
 **Status:** Approved by Aditya 2026-11-22: "Approve" (gate block: "in scripts 13, 14 and 18, write the free rank-r joint fit
 exactly with r + 1 states that form a regular simplex, with rotation and tightness as its parameters"). Not in that block and so
-not approved: the rest-vertex rule of §11.4. What should pick the rotation and tightness for later use is open (§14).
+not approved: the rest-vertex rule of §11.4. Rotation rule approved by Aditya 2026-11-22: "Approve" (gate block: "in MATH §9.6,
+pick the hull's rotation as the smallest tight simplex whose vertices are all stable; tightness stays at 1"), after he chose
+"All vertices stable" as the criterion. Checks: `tests/test_stable_hull.py` (the kept rotation is the first stable one in size
+order and every smaller candidate is unstable, or none is stable and the least unstable is kept; both cases occur; exact rebuild).
 
 ## 10. Single-trial weights (`scripts/18_single_trial_states.py`)
 
@@ -636,6 +648,7 @@ transcripts stamp UTC. No research-log entry has the `Math approved by Aditya` l
 | 9.1 to 9.4 | convex form of the free fit and its vertices | not yet approved | | | | L-2026-11-04-a |
 | 9.5 | vertex form fitted directly, spread penalty, μ chosen inside training folds | approved | 2026-11-21 | "Approve" | "fit TP-GDAR in vertex form, with the weights on the simplex inside the fit and a penalty on how far apart the vertices are" | L-2026-11-21-c |
 | 9.6 | regular-simplex hull on r + 1 vertices of the free fit, rotation and tightness as parameters; used in scripts 13, 14, 18 | approved | 2026-11-22 | "Approve" | "in scripts 13, 14 and 18, write the free rank-r joint fit exactly with r + 1 states that form a regular simplex, with rotation and tightness as its parameters" | L-2026-11-22-a |
+| 9.6 | rotation rule: smallest tight simplex with every vertex stable, τ = 1; least unstable if none | approved | 2026-11-22 | "Approve" | "in MATH §9.6, pick the hull's rotation as the smallest tight simplex whose vertices are all stable; tightness stays at 1" | L-2026-11-22-b |
 | 11.4 | rest vertex of script 14 with 3 vertices (largest mean hold weight) | not yet approved | | | | L-2026-11-22-a |
 | 10 | single-trial weights and tests | approved | 2026-11-05 | "Approve" (twice) | "how to tell whether the rank 3 states can be found on a single trial"; "how to test whether the rank 3 states can be found on a single held-out trial, without the task clock" | L-2026-11-05-f |
 | 11.3 | data spectrum by phase | approved | 2026-11-05 | "Approve" | "not a model-fit change, in my view: this is how to compute the per-phase spectrum for the slides, and nothing gets fitted" | L-2026-11-05-a |
@@ -661,8 +674,11 @@ Each needs Aditya's decision through the gate. The current method is listed firs
    *2026-11-21: §9.5's spread penalty is the first such rule ("dominate" read as a vertex far outside the data). Bounds on each
    vertex's edge strengths remain a possible later constraint.*
    *2026-11-22: in scripts 13, 14 and 18 the vertices are now §9.6's regular simplex, with rotation and tightness as parameters
-   (Aditya: "the tightness and rotation of hull will be our parameter"). Open: what picks them for later use, for example every
-   vertex stable, the LMI decay rate, or vertices close to real bins.*
+   (Aditya: "the tightness and rotation of hull will be our parameter"). Same day, Aditya chose "All vertices stable": τ = 1 and
+   the smallest rotation whose vertices are all stable (approved). Where no rotation gives that (11-11 lit trials with evoked
+   removed, ranks 2 and 3: largest vertex radius 1.025 and 1.028), the least unstable is kept and flagged; what to do there is
+   open. The rule can pick quite different rotations in different folds (script 18's fold-to-full vertex match fell to 0.70 in
+   one fold).*
 4. **Gauge** (§6.4): unit-RMS columns or orthonormal columns. It matters only through §9.1.
 5. **K = 16 at the top of the CV grid** (§8.4); GDAR's held-out ℓ still rises at K = 32.
 6. **The 1% shrink of the scoring Σ** (§8.2).

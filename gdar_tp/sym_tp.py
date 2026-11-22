@@ -309,6 +309,59 @@ def regular_hull(model, Hbar, angles=None, tau=1.0):
                 h=tau * h, h_tight=h, tau=float(tau), angles=angles, Yv=Yv, Y=Y)
 
 
+def spectral_radius(theta, K):
+    """max |eig| of the companion matrix of ``theta (N, K N)`` (MATH §11.1)."""
+    N = theta.shape[0]
+    Ac = np.zeros((K * N, K * N))
+    Ac[:N] = theta[:, :K * N]
+    if K > 1:
+        Ac[N:, :-N] = np.eye((K - 1) * N)
+    return float(np.abs(np.linalg.eigvals(Ac)).max())
+
+
+def hull_candidates(Yt, step_deg=0.1, n_random=2000, seed=0):
+    """Candidate rotations for the stable-hull search, sorted by the size h of their tight simplex (smallest first).
+
+    r = 1: the identity.  r = 2: every ``step_deg`` degrees over the 120-degree period.  r = 3: ``n_random`` random
+    rotations.  The unconstrained smallest rotation (``smallest_rotation``) is always included.  Returns (angles, h).
+    """
+    r = Yt.shape[1]
+    if r == 1:
+        cands = [np.zeros(1)]
+    elif r == 2:
+        cands = [np.array([np.deg2rad(d)]) for d in np.arange(0.0, 120.0, step_deg)]
+    else:
+        cands = _rotation_grid(3, n_random=n_random, seed=seed)
+    cands = [np.atleast_1d(smallest_rotation(Yt))] + list(cands)
+    h = np.array([tight_regular_simplex(Yt, rotation_matrix(r, a))[1] for a in cands])
+    order = np.argsort(h, kind="stable")
+    return [cands[i] for i in order], h[order]
+
+
+def stable_regular_hull(model, Hbar, R, N, K, step_deg=0.1, n_random=2000, seed=0):
+    """``regular_hull`` at tau = 1 whose rotation is the smallest with every vertex stable (MATH §9.6, rotation rule).
+
+    Candidates (``hull_candidates``) are tried from the smallest simplex up; the first whose vertices all have spectral
+    radius < 1 is kept.  If none is, the candidate with the smallest largest-vertex radius is kept and ``stable`` is
+    False.  Adds ``stable``, ``rho`` (per vertex), ``n_checked`` and ``h_smallest`` (the unconstrained smallest size)
+    to the ``regular_hull`` dict.
+    """
+    _, _, _, Yt, _ = hull_frame(model, Hbar)
+    cands, hs = hull_candidates(Yt, step_deg=step_deg, n_random=n_random, seed=seed)
+    best, best_rho = None, np.inf
+    for i, a in enumerate(cands):
+        hull = regular_hull(model, Hbar, angles=a, tau=1.0)
+        rho = np.array([spectral_radius(theta_of(ph, R, N), K) for ph in hull["phi"]])
+        if rho.max() < 1:
+            hull.update(stable=True, rho=rho, n_checked=i + 1, h_smallest=float(hs[0]))
+            return hull
+        if rho.max() < best_rho:
+            best, best_rho = (hull, rho), rho.max()
+    hull, rho = best
+    hull.update(stable=False, rho=rho, n_checked=len(cands), h_smallest=float(hs[0]))
+    return hull
+
+
 def _enclosing_triangle(Y2):
     """Smallest triangle containing the 2-D points whose sides lie on convex-hull edges."""
     from itertools import combinations
