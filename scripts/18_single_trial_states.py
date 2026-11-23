@@ -239,6 +239,12 @@ def fold_job(job):
     centred_ok = (j - Wmax // 2 >= 0) & (j - Wmax // 2 + Wmax <= len(ts))
     m2 = (lt[te] >= 0) & (lab_med[te] >= 0) & centred_ok
     m3 = (lt[te] >= 0) & (j >= Wmax)
+    keep = None if bad is None else ~bad[ts + 1]
+    if keep is not None:
+        # with the step mask (MATH §1.1, approved 2026-11-23) a causal window with no unmasked sample gives no estimate, so
+        # that target isn't scored in any row; the smallest window is inside the larger ones, so it decides for all of them
+        n_min, _ = window_sums(keep[None, :, None].astype(float), min(WINDOWS), True)
+        m3 = m3 & (n_min[0, :, 0] > 0)
     phase = np.maximum(lt[te], 0) // s13.NSUB
     gsum = {"clock": np.array([(-0.5 * (rn(np.nan_to_num(clock[te])) - rn0))[m3 & (phase == q)].sum() for q in range(4)])}
     cnt = np.array([(m3 & (phase == q)).sum() for q in range(4)])
@@ -247,7 +253,6 @@ def fold_job(job):
                stable=bool(poly["stable"]), rho_v=poly["rho"][perm],
                clock=clock[te].astype(np.float32), hat={}, r_own={}, r_med={}, gsum=gsum, cnt=cnt,
                go_hat={}, touch_hat={}, tmpl_go={}, tmpl_touch={})
-    keep = None if bad is None else ~bad[ts + 1]
     for W in WINDOWS:
         hc, _ = lam_hat(Qf, bf, W, causal=False, keep=keep)
         hp, _ = lam_hat(Qf[te], bf[te], W, causal=True, keep=keep)

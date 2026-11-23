@@ -953,3 +953,74 @@ vertex has radius 1.000 to 3 decimals (below 1). Move-minus-rest edge r with 11-
   0.94 (removed). The rule picks quite different rotations in some folds.
 - Timing, evoked left in: go r −0.02 to +0.05 (p 0.17 to 0.62), touch r +0.35, +0.40, +0.44 (p 0.0001). Agreement with the
   trial's own clock: median r 0.66, 0.76, 0.83 (left in), 0.77, 0.84, 0.88 (removed).
+
+## Evoked response: overlapping bins, step mask, null test (`13`, `18`, `20`), 2026-11-23
+
+All three approved by Aditya 2026-11-23: overlapping bins (MATH §2.4), the step mask (§1.1) and the null test (§8.7). H 2021-11-12,
+rank 3 unless stated, gains over GDAR in nats/sample on held-out trials, 5 folds. Sources: `cache/13_run*.log`, `cache/18_run*.log`,
+`cache/20_run.log`, and the printout of `scripts/make_deck_figures_evoked.py`.
+
+**Held-out gain, script 13** (rank 2 / rank 3 / a separate fit per bin):
+
+| setup | evoked left in | evoked removed |
+|---|---|---|
+| no overlap (as before) | +0.1898 / +0.2222 / +0.2108 | +0.2475 / +0.3233 / +0.3918 |
+| overlap 0.5 bin | +0.1892 / +0.2206 / +0.2103 | +0.2442 / +0.3188 / +0.3932 |
+| overlap 1 bin | +0.1891 / +0.2205 / +0.2208 | +0.2434 / +0.3107 / +0.3929 |
+| overlap 2 bins | +0.1874 / +0.2178 / +0.2324 | +0.2402 / +0.3006 / +0.3821 |
+| steps masked | +0.1960 / +0.2252 / +0.1963 | +0.2586 / +0.3202 / +0.3653 |
+| overlap 1, steps masked | +0.1957 / +0.2242 / +0.2186 | +0.2585 / +0.3197 / +0.3801 |
+
+- Overlap lowers the rank 2 and 3 gains a little (rank 3 left in: +0.2222 to +0.2178 at 2 bins) and raises the separate per-bin
+  fit's with evoked left in (+0.2108 to +0.2324).
+- The mask removes 44 of 667 target times (−2 to 61 and 898 to 961 ms), from fitting and from scoring, so the masked rows score
+  fewer samples than the others.
+- Vertices, evoked left in: without overlap a vertex with ρ 0.997 carries plan 1/4 and late post. With any overlap it no
+  longer does; plan 1/4 goes to the hold vertex (0.44 without overlap, 0.60 at 1 bin) and the largest vertex radius is 0.980,
+  0.979, 0.975 at 0.5, 1, 2 bins. Evoked removed, the plan 1/4 vertex stays at 0.5 and 1 bin (ρ 0.991, 0.997) and goes at 2.
+- With overlap 1 and the mask, evoked left in: hold vertex 0.92 at hold 1/4 (0.66 at plan 1/4), move vertex 0.71 mean over move,
+  post vertex 0.53 at post 3/4, fourth vertex at most 0.17; all four stable, largest radius 0.981.
+
+**Null test** (script 20, `cache/20_run.log`): a fixed GDAR fitted on all 320 trials with evoked removed (radius 0.927), driven by
+Gaussian noise, plus each trial's fitted wave. Trial mean of the null data against the wave: r 0.972. Variance per sample and
+channel: recordings 955, null 773, wave alone 53 µV².
+
+| data | evoked left in | evoked removed |
+|---|---|---|
+| recordings | +0.1898 / +0.2222 / +0.2108 | +0.2475 / +0.3233 / +0.3918 |
+| fixed network + wave | +0.0201 / +0.0291 / +0.0215 | +0.0205 / +0.0207 / +0.0041 |
+| fixed network only | −0.0029 / −0.0058 / −0.0337 | +0.0205 / +0.0207 / +0.0041 |
+| fixed network + wave, masked | +0.0155 / +0.0213 / +0.0058 | +0.0205 / +0.0204 / +0.0020 |
+| same, overlap 1, masked | +0.0156 / +0.0214 / +0.0186 | +0.0206 / +0.0209 / +0.0153 |
+
+- The wave on a fixed network gives a rank 3 gain of +0.0291 against +0.2222 on the recordings. Most of the gain is not
+  reproduced by an additive wave of fixed shape and size.
+- With no wave the gains are slightly negative, as expected when nothing changes and the model has extra freedom.
+- Evoked removed gives the same numbers with and without the wave, as it should: the removal is linear, so it takes the wave out
+  exactly. The +0.02 that remains has no state change to find, which points to the removal step itself; not checked further.
+- The null fit still has a hold vertex (0.91 at hold 1/4) and a move vertex (0.67 mean over move, 0.73 at post 3/4), and a third
+  that peaks at plan 1/4 (1.00), right after target. Its simplex is smaller: size 0.150 against 0.478. So the hold/move weight
+  pattern alone does not show a changing network; the size of the gain is the better test.
+- Not in the null: trial-to-trial changes in the size or shape of the evoked response.
+
+**Single trials, script 18** (evoked left in; clock / past 30 / 60 / 120 ms; lowest fold match):
+
+| setup | gain | lowest fold match |
+|---|---|---|
+| no overlap | +0.1618 / +0.1669 / +0.1939 / +0.2013 | 0.70 |
+| overlap 0.5 | +0.1613 / +0.1719 / +0.2021 / +0.2078 | 0.99 |
+| overlap 1 | +0.1615 / +0.1738 / +0.2034 / +0.2088 | 0.91 |
+| overlap 2 | +0.1597 / +0.1753 / +0.2040 / +0.2091 | 0.96 |
+| steps masked | +0.1674 / +0.2027 / +0.2237 / +0.2228 | 0.93 |
+| overlap 1, steps masked | +0.1671 / +0.2044 / +0.2253 / +0.2247 | 0.91 |
+
+- Masked rows score 153,212 samples against 167,932: targets next to a step are dropped, and a window with no unmasked sample
+  isn't scored (the fix in script 18 that matches the approved mask rule; the first masked run scored those windows with zero
+  weights and gave −0.37 and −0.35 at 30 and 60 ms).
+- With the mask the 30 ms window gains most (+0.1669 to +0.2027) and the plan phase rises (60 ms: +0.042 to +0.114). Consistent
+  with the step at target onset spoiling short windows just after it.
+- Evoked removed, 60 ms: +0.2409 (no overlap), +0.2466 (overlap 1), +0.2810 (masked), +0.2817 (overlap 1, masked).
+- Go is still not recoverable from the weights (r −0.02 to +0.07 in every setup); touch r +0.35 to +0.49.
+
+Open for Aditya: the overlap window, whether the mask becomes the default, and whether to look into the +0.02 the removal step
+leaves on the null.

@@ -55,10 +55,15 @@ and script 13's are not comparable.
   position units (`GRAPH_TH`).
 - **Stimulation day (script 14):** a target is dropped, on lit and unlit trials alike, if it or any of its K lags falls in
   −20..60 ms or 860..960 ms re target (`ART`, `mask_artefact`).
-- **Not done:** the steps in `noart` at 0→1, 10→11, 900→901 and 910→911 ms re target are not masked in scripts 12 to 14.
-  Script 12c tests a mask (targets whose sample or lags touch −3..15 or 897..915 ms) on 11-12 only.
+- **Step mask (scripts 13 and 18, `--mask`; off by default):** `noart` has steps at 0→1, 10→11, 900→901 and 910→911 ms re
+  target that raw `lfp` doesn't. With `--mask`, every target whose sample or any of its K lags falls in −3..15 or 897..915 ms is
+  dropped, as in script 12c: 44 of 667 target times on 11-12 (−2 to 61 and 898 to 961 ms). In script 18 the dropped targets
+  also leave the weight windows (§10); a window with none left gets no estimate, and a target whose causal window has none is
+  scored in no row. Approved by Aditya 2026-11-23, "Approve" (gate block "add scripts/20_null_evoked.py ...; keep the step mask
+  (a) and the --null options already added to scripts 13 and 18"). Without `--mask` (scripts 12 to 14) the steps stay in.
 
-Code: `scripts/12_tp_vs_gdar_ios.py: load`, `scripts/14_tp_vertices_days.py: load, mask_artefact`.
+Code: `scripts/12_tp_vs_gdar_ios.py: load`, `scripts/14_tp_vertices_days.py: load, mask_artefact`,
+`scripts/13_tp_vertices_ios.py: step_mask`.
 
 **Differs:** none from the code. Not reported elsewhere: on 11-11 the artefact drop leaves plan 1/4 (§2.3) with 246 unlit and
 228 lit targets against about 10,000 in the other bins (`cache/14_run.log`).
@@ -389,6 +394,24 @@ same sum-to-one rank 3 model scores +0.214 / +0.313 with its own Σ (review chec
 
 **Status:** §8.6's shared Σ approved 2026-11-05 (§13). The rest is not yet approved.
 
+### 8.7 Null test for the evoked response (`scripts/20_null_evoked.py`; script 13 `--null`, `--null-nowave`)
+
+A network whose coupling never changes, plus each trial's real evoked wave, fitted exactly as the recordings:
+
+```
+x̃_n(t) = y_n(t) + m_n(t)
+y_n(t+1) = Σ_k Â_k y_n(t−k+1) + e_n(t),   e ~ N(0, Σ̂) independent,   2,000 burn-in samples dropped, seed 0
+```
+
+Â_k, Σ̂: the GDAR fit (§4.3) to all trials with the evoked response removed (§3, kernels on all trials). m_n = X_n − X_n,removed,
+trial n's fitted wave with its own go, touch and direction. Each simulated trial is mean-centred per channel (§1.1). A second set,
+y alone (`--null-nowave`), checks that no wave gives no gain. Since the null data have no state change, a TP-GDAR gain over GDAR on
+them comes from the wave. Result (RESULTS.md, 2026-11-23): this holds with evoked left in (y alone: rank 3 −0.0058). With evoked
+removed the null gains +0.0207 at rank 3 with or without the wave, so there the removal step itself leaves a gain; not explained.
+
+**Status:** approved by Aditya 2026-11-23, "Approve" (gate block "add scripts/20_null_evoked.py, which builds the null data you
+approved as (b)").
+
 ## 9. Convex form and vertices (`sym_tp.py: polytope_vertices`)
 
 Control needs convex weights (§12.1). The fitted W is turned into vertices Θ_v and weights λ_gv ≥ 0, Σ_v λ_gv = 1.
@@ -676,6 +699,8 @@ transcripts stamp UTC. No research-log entry has the `Math approved by Aditya` l
 | § | What | Status | Date | Aditya's words | Gate block (its first line) | Log |
 |---|---|---|---|---|---|---|
 | 1.1 | IOS Reach preprocessing | not yet approved | | | | L-2026-11-02-a |
+| 1.1 | step mask (`--mask`, scripts 13 and 18) | approved | 2026-11-23 | "Approve" | "add scripts/20_null_evoked.py, which builds the null data you approved as (b); keep the step mask (a) and the --null options already added to scripts 13 and 18" | L-2026-11-23-c |
+| 8.7 | null test: fixed GDAR plus each trial's real evoked wave | approved | 2026-11-23 | "Approve" | same block | L-2026-11-23-c |
 | 1.2 | OS-Pulse rules | not yet approved | | | | L-2026-10-26-b |
 | 2 | phases, go-locked bins, warped bins | not yet approved | | | | L-2026-11-02-a, L-2026-11-04-a |
 | 2.4 | overlapping bins: weights split over a window of Δ bins, across events; scoring by the own bin | approved | 2026-11-23 | "Approve" | "fit each bin's operator on its own samples plus part of its left and right neighbours' (crossing target, go and touch), with borrowed samples' weight split; predict each sample with its own bin's operator" | L-2026-11-23-b |
