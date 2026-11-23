@@ -109,6 +109,47 @@ are cut, so late-touch trials have a short or empty post 4/4. p_grid = (0, …, 
 
 **Status:** not yet approved.
 
+### 2.4 Overlapping bins (scripts 13 and 18, `--overlap Δ`; `gdar_tp/bins.py`)
+
+Each bin's bowl (§6.1) draws on part of its neighbours' samples, across target, go and touch, so the bin after an event also has
+to predict the end of the phase before it. Warped time of a target sample at time t in phase k = 0..3 with the limits [a, b) of
+§2.1:
+
+```
+τ(t) = 4k + 4 (t − a)/(b − a)  ∈ [0, 16),        its §2.3 bin = min(⌊τ⌋, 4k + 3)
+```
+
+Weight of the sample in bin g = 0..15, for a width Δ > 0 measured in bins:
+
+```
+a_g(τ) = | [τ − Δ/2, τ + Δ/2] ∩ [g, g + 1) |  /  | [τ − Δ/2, τ + Δ/2] ∩ [0, 16) |,        Σ_g a_g(τ) = 1
+```
+
+Δ = 0 is §2.3: weight 1 in the sample's own bin. Bin g draws on samples up to Δ/2 bins into each neighbour. At Δ = 1 a sample d
+bins from its own bin's centre (0 ≤ d ≤ ½) counts 1 − d in its own bin and d in the nearer neighbour, so a sample on a bin edge
+counts ½ in each. At Δ = 2 bin g draws on all of bins g − 1 and g + 1. At the two ends of the axis the window is clipped, so hold
+1/4 and post 4/4 borrow from one side only. Because the weights split, each sample counts once over all bins.
+
+The bowls take each sample's terms with these weights:
+
+```
+G_g = Σ_s a_g(τ_s) z(s) z(s)ᵀ     C_g = Σ_s a_g(τ_s) z(s) x(s+1)ᵀ     S_yy,g = Σ_s a_g(τ_s) x(s+1) x(s+1)ᵀ     n_g = Σ_s a_g(τ_s)
+```
+
+and H_g, h_g follow by §4.2. The joint fit (§6), the separate per-bin fits (§7.1) and the hull (§9.6) run unchanged on these
+bowls. The pooled statistics don't change, since the weights sum to 1, so GDAR and Σ̂ are the same as at Δ = 0.
+
+Scoring doesn't change (§8): a held-out sample is predicted with the operator of its own §2.3 bin, and each model's scoring Σ comes
+from the training samples' residuals under their own bins' operators. Script 18's clock weights are the own bin's λ_g. So Δ = 0
+gives the earlier results exactly (`bins.overlap_weights` returns the §2.3 one-hot weights, and the scripts then use the hard
+statistics).
+
+Runs: Δ = 0, 0.5, 1, 2 on H 2021-11-12, evoked left in and removed. Choosing one Δ is Aditya's.
+
+**Status:** approved by Aditya 2026-11-23, "Approve" (gate block "fit each bin's operator on its own samples plus part of its left
+and right neighbours' (crossing target, go and touch), with borrowed samples' weight split; predict each sample with its own bin's
+operator").
+
 ## 3. Evoked kernels (the "evoked removed" variant)
 
 The task-evoked response is an input the model doesn't have, and a state-dependent operator can absorb it. The "evoked removed"
@@ -637,6 +678,7 @@ transcripts stamp UTC. No research-log entry has the `Math approved by Aditya` l
 | 1.1 | IOS Reach preprocessing | not yet approved | | | | L-2026-11-02-a |
 | 1.2 | OS-Pulse rules | not yet approved | | | | L-2026-10-26-b |
 | 2 | phases, go-locked bins, warped bins | not yet approved | | | | L-2026-11-02-a, L-2026-11-04-a |
+| 2.4 | overlapping bins: weights split over a window of Δ bins, across events; scoring by the own bin | approved | 2026-11-23 | "Approve" | "fit each bin's operator on its own samples plus part of its left and right neighbours' (crossing target, go and touch), with borrowed samples' weight split; predict each sample with its own bin's operator" | L-2026-11-23-b |
 | 3 | evoked kernels | not yet approved | | | | L-2026-11-02-a |
 | 4 | GDAR model and GLS estimator; edge-wise class | not yet approved | | | | L-2026-11-02-a, L-2026-10-26-b |
 | 5 | TP-GDAR model | not yet approved | 2026-11-05 | "so for now lets stick with joint fit setup" (context, not a gate approval) | | L-2026-11-05-f |

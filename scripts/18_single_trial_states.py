@@ -25,7 +25,11 @@ Evoked removed subtracts kernels placed at each trial's own go and touch, so tim
 
 Vertices of each fold are put in the order of script 13's full-data fit (the permutation whose 16-bin weights match best).
 
-Run:  .venv\Scripts\python scripts/18_single_trial_states.py [--plot]
+Overlapping bins (MATH §2.4, approved by Aditya 2026-11-23): with --overlap D the fold fit's bins also take part of their
+neighbours' samples, as in script 13 (whose cache with the same D gives the vertex order).  The clock weights stay the own
+bin's weights.
+
+Run:  .venv\Scripts\python scripts/18_single_trial_states.py [--overlap D] [--plot]
 """
 
 from __future__ import annotations
@@ -57,8 +61,8 @@ TAU = np.arange(-200.0, 300.0, DT)      # template, ms about the event
 GO_GRID = np.arange(150.0, 701.0, DT)
 TOUCH_GRID = np.arange(250.0, 1136.0, DT)
 NPERM = 10000
-CACHE = os.path.join(ROOT, "cache", "18_single_trial_H_2021-11-12.pkl")
-FIGURE = os.path.join(s12.FIG, "18_single_trial_states.png")
+CACHE = os.path.join(ROOT, "cache", f"18_single_trial_H_2021-11-12{s13.SUFFIX}.pkl")
+FIGURE = os.path.join(s12.FIG, f"18_single_trial_states{s13.SUFFIX}.png")
 log = s12.log
 
 
@@ -176,16 +180,17 @@ def trial_corr(a, c, m):
 
 # ------------------------------------------------------------------------------ one fold
 def fold_job(job):
-    variant, f, X, lab, fo, t, go, touch, A, ref = job
+    variant, f, X, lab, fo, t, go, touch, A, ref, wts = job
     n, T, N = X.shape
     te, trn = np.where(fo == f)[0], fo != f
     R = symmetric_basis(A, K)
     s = s12b.fold_stats(X, lab, K, fo, P)
     tr = s12b.sel(s, f)
+    trf = s12b.sel(s13.fit_stats(X, lab, wts, fo, P, hard=s), f)   # the bins' fitting statistics (MATH §2.4)
     a = {k: tr[k].sum(0) for k in tr}
     phi0, Sf = fit_gls_pooled(a["Gzz"], a["Gzy"], a["Syy"], a["n"], R)
     Hbar = _quad(a["Gzz"], a["Gzy"], R, np.linalg.pinv(Sf))[0] / a["n"]
-    model = fit_sym_tp(tr, R, Sf, RANK, np.arange(float(P)), n_iter=25)
+    model = fit_sym_tp(trf, R, Sf, RANK, np.arange(float(P)), n_iter=25)
     poly = stable_regular_hull(model, Hbar, R, N, K)
     perm, match = align(poly["lam"], ref)
     lam_bins = poly["lam"][:, perm]
@@ -318,6 +323,7 @@ def summarize(variant, res, D):
 def main():
     D = s12.load()
     lab = s13.warped_labels(D)
+    wts = s13.bin_weights(D, lab)
     fo = s12.folds(D["ang"])
     Z = s12.evoked_design(D)
     with open(s13.CACHE, "rb") as fh:
@@ -326,7 +332,7 @@ def main():
     for variant in ("felix", "induced"):
         ref = c13[variant]["full"][RANK]["poly"]["lam"]
         jobs = [(variant, f, D["X"] if variant == "felix" else s12.remove_evoked(D["X"], Z, fo != f),
-                 lab, fo, D["t"], D["go"], D["touch"], D["A"], ref) for f in range(s12.NFOLD)]
+                 lab, fo, D["t"], D["go"], D["touch"], D["A"], ref, wts) for f in range(s12.NFOLD)]
         out[variant] = summarize(variant, s12.fold_map(fold_job, jobs), D)
         out[variant]["ref"] = ref
         with open(CACHE, "wb") as fh:

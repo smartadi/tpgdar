@@ -17,7 +17,11 @@ unique.  Uncertainty: the same fit on the 5 training splits, expressed in the fu
 vertices came from `polytope_vertices` (r vertices after a sum-to-one projection); the log still
 lists them for comparison.
 
-Run:  .venv\Scripts\python scripts/13_tp_vertices_ios.py [--plot]
+Overlapping bins (MATH §2.4, approved by Aditya 2026-11-23): with --overlap D (D > 0, in bins) each bin's bowl also takes part of
+its neighbours' samples, across target, go and touch, with each sample's weight split over a window of D bins.  Held-out samples
+are still scored with their own bin's operator, so D = 0 is the run above.  Caches and figures carry the D.
+
+Run:  .venv\Scripts\python scripts/13_tp_vertices_ios.py [--overlap D] [--plot]
 """
 
 from __future__ import annotations
@@ -38,13 +42,16 @@ s12b = importlib.import_module("12b_tp_vs_gdar_robust")
 from gdar_tp.sym_tp import (_quad, _rotation_grid, fit_gls_pooled, fit_sym_tp, gls_quads,  # noqa: E402
                             polytope_vertices, regular_hull, stable_regular_hull, symmetric_basis, theta_of)
 from gdar_tp.tp import _barycentric  # noqa: E402
+from gdar_tp.bins import overlap_weights, weighted_bin_stats  # noqa: E402
 
 K = 16
 NSUB = 4
 RANKS = (2, 3)
 TAUS = (1.0, 1.25, 1.5, 2.0)
 N_ROT3 = 100
-CACHE = os.path.join(ROOT, "cache", "13_vertices_H_2021-11-12.pkl")
+OVERLAP = float(sys.argv[sys.argv.index("--overlap") + 1]) if "--overlap" in sys.argv else 0.0   # MATH §2.4, in bins
+SUFFIX = f"_overlap{OVERLAP:g}" if OVERLAP else ""
+CACHE = os.path.join(ROOT, "cache", f"13_vertices_H_2021-11-12{SUFFIX}.pkl")
 log = s12.log
 
 
@@ -85,6 +92,34 @@ def warped_labels(D):
     return lab
 
 
+def warped_time(D, lab):
+    """Warped time tau in bins (MATH §2.4), NaN where the sample is unused; its floor (capped per phase) is the §2.3 label."""
+    t, go, touch = D["t"], D["go"], D["touch"]
+    tau = np.full((len(go), len(t)), np.nan)
+    for i in range(len(go)):
+        for ph, (a, b) in enumerate(((-400.0, 0.0), (0.0, go[i]), (go[i], touch[i]), (touch[i], touch[i] + 500.0))):
+            m = (t >= a) & (t < b) & (t <= 1400)
+            tau[i, m] = ph * NSUB + NSUB * (t[m] - a) / (b - a)
+    ok = lab >= 0
+    assert np.array_equal(ok, ~np.isnan(tau))
+    assert np.array_equal(np.minimum(np.floor(tau[ok]), lab[ok] // NSUB * NSUB + NSUB - 1).astype(int), lab[ok])
+    return tau
+
+
+def bin_weights(D, lab, overlap=OVERLAP):
+    """Each target sample's weight per bin (MATH §2.4); None at overlap 0, where the hard statistics are used."""
+    if not overlap:
+        return None
+    return overlap_weights(warped_time(D, lab), overlap, lab.max() + 1)
+
+
+def fit_stats(X, lab, wts, fo, P, hard=None):
+    """Statistics the bins are fitted on: the hard ones at overlap 0, else weighted by ``wts``."""
+    if wts is None:
+        return hard if hard is not None else s12b.fold_stats(X, lab, K, fo, P)
+    return weighted_bin_stats(X, wts, K, s12b.K0, fo, s12.NFOLD)
+
+
 def bin_name(g):
     return f"{s12.PHASES[g // NSUB]} {g % NSUB + 1}/{NSUB}"
 
@@ -96,27 +131,32 @@ def in_vertices(phi_grid, verts, Hbar):
 
 
 def fold_fit(job):
-    """Fits and held-out scores of one training split from its Grams, in a worker process."""
-    sf, f, R, N, P = job
+    """Fits and held-out scores of one training split from its Grams, in a worker process.
+
+    ``sfit`` are the statistics the bins are fitted on (weighted with overlapping bins, MATH §2.4); ``sf`` the hard ones, by
+    which every held-out sample is scored with its own bin's operator and each model's scoring Sigma is computed (§8).
+    """
+    sf, sfit, f, R, N, P = job
     tr, te = s12b.sel(sf, f), s12b.sel(sf, f, False)
+    trf = s12b.sel(sfit, f)
     a = {k: tr[k].sum(0) for k in tr}
     phi, Sf = fit_gls_pooled(a["Gzz"], a["Gzy"], a["Syy"], a["n"], R)
     Base = np.stack([theta_of(phi, R, N)] * P)
     base = s12b.ll(Base, te, [s12.sigma_of(Base, tr)] * P)
     grid = np.arange(float(P))
-    Hs, hs = gls_quads(tr, R, Sf)
-    Per = np.stack([fit_sym_tp({k: tr[k][[g]] for k in tr}, R, Sf, 1, grid[[g]], n_iter=1, quads=(Hs[[g]], hs[[g]])).theta_grid()[0]
+    Hs, hs = gls_quads(trf, R, Sf)
+    Per = np.stack([fit_sym_tp({k: trf[k][[g]] for k in trf}, R, Sf, 1, grid[[g]], n_iter=1, quads=(Hs[[g]], hs[[g]])).theta_grid()[0]
                     for g in range(P)])
     gain, family = {}, {}
     for r in RANKS:
-        m = fit_sym_tp(tr, R, Sf, r, grid, n_iter=25, quads=(Hs, hs))
+        m = fit_sym_tp(trf, R, Sf, r, grid, n_iter=25, quads=(Hs, hs))
         Th = m.theta_grid()
         gain[r] = s12b.ll(Th, te, [s12.sigma_of(Th, tr)] * P) - base
         family[r] = m.W @ m.phi
     return dict(cnt=te["n"], per=s12b.ll(Per, te, [s12.sigma_of(Per, tr)] * P) - base, gain=gain, family=family)
 
 
-def run_variant(D, lab, fo, Z, variant):
+def run_variant(D, lab, fo, Z, variant, wts=None):
     t0 = time.time()
     X0 = D["X"]
     N = X0.shape[2]
@@ -127,15 +167,17 @@ def run_variant(D, lab, fo, Z, variant):
 
     X = X0 if variant == "felix" else s12.remove_evoked(X0, Z, np.ones(len(X0), bool))
     s = s12b.fold_stats(X, lab, K, fo, P)
+    sfit = fit_stats(X, lab, wts, fo, P, hard=s)
     st = {k: s[k].sum(0) for k in s}
-    tot = {k: st[k].sum(0) for k in st}
+    stf = {k: sfit[k].sum(0) for k in sfit}
+    tot = {k: st[k].sum(0) for k in st}     # pooled: the same with or without overlap, since the weights sum to 1
     phi0, Sig = fit_gls_pooled(tot["Gzz"], tot["Gzy"], tot["Syy"], tot["n"], R)
     Hbar = _quad(tot["Gzz"], tot["Gzy"], R, np.linalg.pinv(Sig))[0] / tot["n"]
-    out.update(phi0=phi0, Sigma=Sig, R=R, n=st["n"])
+    out.update(phi0=phi0, Sigma=Sig, R=R, n=st["n"], n_fit=stf["n"], overlap=OVERLAP if wts is not None else 0.0)
     full = {}
-    quads = gls_quads(st, R, Sig)
+    quads = gls_quads(stf, R, Sig)
     for r in RANKS:
-        m = fit_sym_tp(st, R, Sig, r, grid, n_iter=40, quads=quads)
+        m = fit_sym_tp(stf, R, Sig, r, grid, n_iter=40, quads=quads)
         old = polytope_vertices(m, Hbar)
         smallest = regular_hull(m, Hbar)
         full[r] = dict(model=m, poly=stable_regular_hull(m, Hbar, R, N, K), smallest=smallest, old=old, J=m.objective)
@@ -163,8 +205,14 @@ def run_variant(D, lab, fo, Z, variant):
     gain = {r: np.zeros((s12.NFOLD, P)) for r in RANKS}
     per = np.zeros((s12.NFOLD, P))
     cnt = np.zeros((s12.NFOLD, P))
-    jobs = [(s if variant == "felix" else s12b.fold_stats(s12.remove_evoked(X0, Z, fo != f), lab, K, fo, P), f, R, N, P)
-            for f in range(s12.NFOLD)]
+    jobs = []
+    for f in range(s12.NFOLD):
+        if variant == "felix":
+            jobs.append((s, sfit, f, R, N, P))
+        else:
+            Xf = s12.remove_evoked(X0, Z, fo != f)
+            hf = s12b.fold_stats(Xf, lab, K, fo, P)
+            jobs.append((hf, fit_stats(Xf, lab, wts, fo, P, hard=hf), f, R, N, P))
     for f, done in enumerate(s12.fold_map(fold_fit, jobs)):
         cnt[f] = done["cnt"]
         per[f] = done["per"]
@@ -275,7 +323,7 @@ def plot():
             fig = fig_variant(out[v], D, r,
                               f"TP-GDAR rank {r}, {r + 1} vertices (smallest stable regular simplex), {name}: "
                               f"H 2021-11-12, no stim, K = {K}, held-out gain {out[v]['full'][r]['gain'].sum()/out[v]['cnt'].sum():+.3f} nats/sample")
-            path = os.path.join(s12.FIG, f"13_vertices_{v}_r{r}.png")
+            path = os.path.join(s12.FIG, f"13_vertices_{v}_r{r}{SUFFIX}.png")
             fig.savefig(path, dpi=170)
             log("wrote", path)
 
@@ -284,11 +332,15 @@ def main():
     D = s12.load()
     lab = warped_labels(D)
     log("samples per bin:", [int((lab == g).sum()) for g in range(lab.max() + 1)])
+    wts = bin_weights(D, lab)
+    if wts is not None:
+        log(f"overlapping bins, window {OVERLAP:g} bins (MATH §2.4); weighted samples per bin:",
+            [round(float(x)) for x in wts.sum((0, 1))])
     fo = s12.folds(D["ang"])
     Z = s12.evoked_design(D)
     out = {}
     for v in ("felix", "induced"):
-        out[v] = run_variant(D, lab, fo, Z, v)
+        out[v] = run_variant(D, lab, fo, Z, v, wts)
         with open(CACHE, "wb") as fh:
             pickle.dump(out, fh)
     log("done")
