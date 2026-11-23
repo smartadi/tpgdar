@@ -21,7 +21,12 @@ Overlapping bins (MATH §2.4, approved by Aditya 2026-11-23): with --overlap D (
 its neighbours' samples, across target, go and touch, with each sample's weight split over a window of D bins.  Held-out samples
 are still scored with their own bin's operator, so D = 0 is the run above.  Caches and figures carry the D.
 
-Run:  .venv\Scripts\python scripts/13_tp_vertices_ios.py [--overlap D] [--plot]
+Step mask (approved by Aditya 2026-11-23): --mask drops every target whose sample or any of its K lags falls in -3..15 or
+897..915 ms after target, where `noart` has steps that raw `lfp` doesn't (script 12c, MATH §1.1).
+Null test (approved by Aditya 2026-11-23): --null fits the simulated data of script 20 (a fixed GDAR plus each trial's real
+evoked wave) instead of the recordings; --null-nowave fits the fixed GDAR alone.
+
+Run:  .venv\Scripts\python scripts/13_tp_vertices_ios.py [--overlap D] [--mask] [--null | --null-nowave] [--plot]
 """
 
 from __future__ import annotations
@@ -50,7 +55,12 @@ RANKS = (2, 3)
 TAUS = (1.0, 1.25, 1.5, 2.0)
 N_ROT3 = 100
 OVERLAP = float(sys.argv[sys.argv.index("--overlap") + 1]) if "--overlap" in sys.argv else 0.0   # MATH §2.4, in bins
-SUFFIX = f"_overlap{OVERLAP:g}" if OVERLAP else ""
+MASK = "--mask" in sys.argv
+NULL = "nowave" if "--null-nowave" in sys.argv else ("wave" if "--null" in sys.argv else None)
+SUFFIX = ((f"_overlap{OVERLAP:g}" if OVERLAP else "") + ("_mask" if MASK else "")
+          + {None: "", "wave": "_null", "nowave": "_nullnowave"}[NULL])
+STEPS = ((-3.0, 15.0), (897.0, 915.0))    # ms after target: the noart steps (script 12c)
+NULL_DATA = os.path.join(ROOT, "cache", "20_null_H_2021-11-12.npz")
 CACHE = os.path.join(ROOT, "cache", f"13_vertices_H_2021-11-12{SUFFIX}.pkl")
 log = s12.log
 
@@ -104,6 +114,14 @@ def warped_time(D, lab):
     assert np.array_equal(ok, ~np.isnan(tau))
     assert np.array_equal(np.minimum(np.floor(tau[ok]), lab[ok] // NSUB * NSUB + NSUB - 1).astype(int), lab[ok])
     return tau
+
+
+def step_mask(t):
+    """Targets (by index on the time axis) whose sample or any of the K lags touches a noart step, as in script 12c."""
+    art = np.zeros(len(t), bool)
+    for a, b in STEPS:
+        art |= (t >= a) & (t < b)
+    return np.convolve(art, np.ones(K + 1), mode="full")[:len(t)] > 0
 
 
 def bin_weights(D, lab, overlap=OVERLAP):
@@ -330,9 +348,20 @@ def plot():
 
 def main():
     D = s12.load()
+    if NULL:
+        z = np.load(NULL_DATA)
+        D["X"] = z["X_wave" if NULL == "wave" else "X_nowave"]
+        log(f"NULL TEST: simulated data from {os.path.basename(NULL_DATA)} ({'fixed GDAR plus the real evoked wave' if NULL == 'wave' else 'fixed GDAR only'})")
     lab = warped_labels(D)
     log("samples per bin:", [int((lab == g).sum()) for g in range(lab.max() + 1)])
     wts = bin_weights(D, lab)
+    if MASK:
+        bad = step_mask(D["t"])
+        lab[:, bad] = -1
+        if wts is not None:
+            wts[:, bad] = 0.0
+        log(f"step mask: {int(bad.sum())} of {len(bad)} target times dropped; samples per bin:",
+            [int((lab == g).sum()) for g in range(lab.max() + 1)])
     if wts is not None:
         log(f"overlapping bins, window {OVERLAP:g} bins (MATH §2.4); weighted samples per bin:",
             [round(float(x)) for x in wts.sum((0, 1))])

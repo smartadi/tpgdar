@@ -27,9 +27,10 @@ Vertices of each fold are put in the order of script 13's full-data fit (the per
 
 Overlapping bins (MATH §2.4, approved by Aditya 2026-11-23): with --overlap D the fold fit's bins also take part of their
 neighbours' samples, as in script 13 (whose cache with the same D gives the vertex order).  The clock weights stay the own
-bin's weights.
+bin's weights.  With --mask the targets next to the noart steps are dropped (script 13's step_mask) from the fit, the scores
+and the weight windows.
 
-Run:  .venv\Scripts\python scripts/18_single_trial_states.py [--overlap D] [--plot]
+Run:  .venv\Scripts\python scripts/18_single_trial_states.py [--overlap D] [--mask] [--plot]
 """
 
 from __future__ import annotations
@@ -122,9 +123,15 @@ def window_sums(A, W, causal):
     return C[:, np.clip(hi, 0, ns)] - C[:, np.clip(lo, 0, ns)], ok
 
 
-def lam_hat(Q, b, W, causal):
+def lam_hat(Q, b, W, causal, keep=None):
+    """``keep`` (samples,): samples the windows may use (the step mask); a window with none of them gets NaN."""
+    if keep is not None:
+        Q, b = Q * keep[None, :, None, None], b * keep[None, :, None]
     Qw, ok = window_sums(Q, W, causal)
     bw, _ = window_sums(b, W, causal)
+    if keep is not None:
+        cnt, _ = window_sums(keep[None, :, None].astype(float), W, causal)
+        ok = ok & (cnt[0, :, 0] > 0)
     Qw[:, ~ok] = np.eye(Qw.shape[-1])
     bw[:, ~ok] = 0.0
     lam = simplex_qp(Qw, bw)
@@ -180,7 +187,7 @@ def trial_corr(a, c, m):
 
 # ------------------------------------------------------------------------------ one fold
 def fold_job(job):
-    variant, f, X, lab, fo, t, go, touch, A, ref, wts = job
+    variant, f, X, lab, fo, t, go, touch, A, ref, wts, bad = job
     n, T, N = X.shape
     te, trn = np.where(fo == f)[0], fo != f
     R = symmetric_basis(A, K)
@@ -240,9 +247,10 @@ def fold_job(job):
                stable=bool(poly["stable"]), rho_v=poly["rho"][perm],
                clock=clock[te].astype(np.float32), hat={}, r_own={}, r_med={}, gsum=gsum, cnt=cnt,
                go_hat={}, touch_hat={}, tmpl_go={}, tmpl_touch={})
+    keep = None if bad is None else ~bad[ts + 1]
     for W in WINDOWS:
-        hc, _ = lam_hat(Qf, bf, W, causal=False)
-        hp, _ = lam_hat(Qf[te], bf[te], W, causal=True)
+        hc, _ = lam_hat(Qf, bf, W, causal=False, keep=keep)
+        hp, _ = lam_hat(Qf[te], bf[te], W, causal=True, keep=keep)
         out["hat"][W] = hc[te].astype(np.float32)
         out["r_own"][W] = trial_corr(hc[te], clock[te], m2)
         out["r_med"][W] = trial_corr(hc[te], clock_med[te], m2)
@@ -324,6 +332,13 @@ def main():
     D = s12.load()
     lab = s13.warped_labels(D)
     wts = s13.bin_weights(D, lab)
+    bad = None
+    if s13.MASK:
+        bad = s13.step_mask(D["t"])
+        lab[:, bad] = -1
+        if wts is not None:
+            wts[:, bad] = 0.0
+        log(f"step mask: {int(bad.sum())} of {len(bad)} target times dropped")
     fo = s12.folds(D["ang"])
     Z = s12.evoked_design(D)
     with open(s13.CACHE, "rb") as fh:
@@ -332,7 +347,7 @@ def main():
     for variant in ("felix", "induced"):
         ref = c13[variant]["full"][RANK]["poly"]["lam"]
         jobs = [(variant, f, D["X"] if variant == "felix" else s12.remove_evoked(D["X"], Z, fo != f),
-                 lab, fo, D["t"], D["go"], D["touch"], D["A"], ref, wts) for f in range(s12.NFOLD)]
+                 lab, fo, D["t"], D["go"], D["touch"], D["A"], ref, wts, bad) for f in range(s12.NFOLD)]
         out[variant] = summarize(variant, s12.fold_map(fold_job, jobs), D)
         out[variant]["ref"] = ref
         with open(CACHE, "wb") as fh:
